@@ -10,6 +10,7 @@ const initialState = {
     sizes: ["M", "L", "XL", "XXL", "XXXL"],
     active: true,
   }],
+  vendors: [{ code: "VDR-001", name: "Cipedes", contact: "", phone: "", address: "", active: true }],
   records: {},
   notes: [],
 };
