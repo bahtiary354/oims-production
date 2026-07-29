@@ -30,6 +30,8 @@ const initial: AppData = { models:[{code:"SNV",name:"Supernova",colors:["Hitam",
 const emptyForm = { date:new Date().toISOString().slice(0,10), code:"SNV", name:"", colors:"Hitam, Navy", sizes:"S, M, L, XL, XXL, 3XL", sourceId:"", destination:"", officer:"", note:"", remainingStatus:"Masih dijahit", qcPassed:0, qcReject:0, qcRepair:0 };
 const sum = (v:Variant[]) => v.reduce((a,b)=>a+b.qty,0);
 
+function ReworkSummary({qcRows,rows}:{qcRows:RecordRow[];rows:RecordRow[]}){const done=new Set(rows.map(x=>x.sourceId));const waiting=qcRows.filter(x=>x.qcDetails&&((x.qcRepair??0)+(x.qcReject??0)>0)&&!done.has(x.id));const repair=waiting.reduce((n,x)=>n+(x.qcRepair??0),0),reject=waiting.reduce((n,x)=>n+(x.qcReject??0),0);return <><div className="rework-kpis"><article><span>QC MENUNGGU TINDAK LANJUT</span><b>{waiting.length}</b><small>transaksi</small></article><article className="repair"><span>REPAIR</span><b>{repair}</b><small>unit</small></article><article className="reject"><span>REJECT / RUSAK</span><b>{reject}</b><small>unit</small></article></div>{waiting.length>0&&<div className="rework-queue">{waiting.map(q=><article key={q.id}><header><div><small>VENDOR ASAL</small><h3>{q.originVendor||"Mengikuti vendor sumber"}</h3><span>{q.id} · {q.modelName}</span></div><em>Menunggu Rework</em></header><div>{q.qcDetails?.filter(x=>x.repair+x.reject>0).map(x=><p key={`${x.color}-${x.size}`}><b>{x.color} · {x.size}</b><span>Repair {x.repair} · Reject {x.reject}</span><small>{x.note||"Tanpa catatan"}</small></p>)}</div></article>)}</div>}{rows.length>0&&<details className="qc-history"><summary><span>✓</span><b>{rows.length} transaksi Rework sudah dikirim</b><small>Disembunyikan · klik untuk melihat riwayat</small></summary><div className="scroll"><table><thead><tr><th>KODE REWORK</th><th>TANGGAL</th><th>SUMBER QC</th><th>VENDOR TUJUAN</th><th>MODEL</th><th>RINCIAN</th><th>JUMLAH</th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td><b>{r.id}</b></td><td>{r.date}</td><td>{r.sourceId}</td><td><b>{r.destination}</b></td><td>{r.modelName}</td><td><small>{r.variants.map(v=>`${v.color} ${v.size}: ${v.qty}`).join(" · ")}</small></td><td><b>{r.total}</b></td></tr>)}</tbody></table></div></details>}</>}
+
 export default function Home(){
   const [active,setActive]=useState("Dashboard");
   const [data,setData]=useState<AppData>(initial);
@@ -69,7 +71,7 @@ export default function Home(){
     return (data.records["Pengiriman Vendor"]??[]).find(x=>x.id===receipt?.sourceId)?.destination??source.originVendor??"";
   }
   function routedVariants(stage:string,source:RecordRow){
-    if(stage==="Rework"&&source.qcDetails)return source.qcDetails.map(x=>({color:x.color,size:x.size,qty:x.repair})).filter(x=>x.qty>0);
+    if(stage==="Rework"&&source.qcDetails)return source.qcDetails.map(x=>({color:x.color,size:x.size,qty:x.repair+x.reject})).filter(x=>x.qty>0);
     if(stage==="Stok Barang Jadi"&&source.qcDetails)return source.qcDetails.map(x=>({color:x.color,size:x.size,qty:x.passed})).filter(x=>x.qty>0);
     return source.variants.map(x=>({...x}));
   }
@@ -83,7 +85,7 @@ export default function Home(){
     if(stage==="Penerimaan Gudang")return sum(remainingAtVendor(source))>0;
     if(stage==="Pengiriman QC")return !(data.records["Pengiriman QC"]??[]).some(x=>x.sourceId===source.id);
     if(stage==="Quality Control")return !(data.records["Quality Control"]??[]).some(x=>x.sourceId===source.id);
-    if(stage==="Rework")return !!source.qcDetails&&(source.qcRepair??0)>0&&!(data.records.Rework??[]).some(x=>x.sourceId===source.id);
+    if(stage==="Rework")return !!source.qcDetails&&((source.qcRepair??0)+(source.qcReject??0)>0)&&!(data.records.Rework??[]).some(x=>x.sourceId===source.id);
     if(stage==="Stok Barang Jadi")return !!source.qcDetails&&(source.qcPassed??0)>0&&!(data.records["Stok Barang Jadi"]??[]).some(x=>x.sourceId===source.id);
     return true;
   }
@@ -157,7 +159,7 @@ export default function Home(){
         {active==="Dashboard"&&<Dashboard data={data} go={setActive}/>}
         {active==="Master Jaket"&&<Master data={data} onAdd={()=>{setEditingCode(null);setForm(emptyForm);setModal("master")}} onEdit={m=>{setEditingCode(m.code);setForm({...emptyForm,code:m.code,name:m.name,colors:m.colors.join(", "),sizes:m.sizes.join(", ")});setModal("master")}}/>}
         {active==="Master Vendor"&&<VendorMaster vendors={data.vendors} onAdd={()=>{setVendorForm({name:"",contact:"",phone:"",address:""});setModal("vendor")}}/>}
-        {stages.includes(active)&&<div className={active==="Quality Control"?"qc-stage":""}><StagePage active={active} rows={current} sources={data.records[stageInfo[active].source??""]??[]} allRecords={data.records} sourceCount={(data.records[stageInfo[active].source??""]??[]).length} onAdd={openRecord}/>{active==="Quality Control"&&<QCSummary rows={current} allRecords={data.records}/>}</div>}
+        {stages.includes(active)&&<div className={active==="Quality Control"?"qc-stage":active==="Rework"?"rework-stage":""}><StagePage active={active} rows={current} sources={data.records[stageInfo[active].source??""]??[]} allRecords={data.records} sourceCount={(data.records[stageInfo[active].source??""]??[]).length} onAdd={openRecord}/>{active==="Quality Control"&&<QCSummary rows={current} allRecords={data.records}/>} {active==="Rework"&&<ReworkSummary qcRows={data.records["Quality Control"]??[]} rows={current}/>}</div>}
         {active==="Surat Jalan"&&<Notes notes={filteredNotes} query={query} setQuery={setQuery} onPrint={setPrint}/>}
         {active==="Laporan"&&<Reports data={data}/>}
       </>}</div></section>
