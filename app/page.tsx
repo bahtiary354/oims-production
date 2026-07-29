@@ -1,272 +1,168 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
-type Bundle = {
-  code: string;
-  model: string;
-  color: string;
-  vendor: string;
-  qty: number;
-  progress: number;
-  status: string;
-  due: string;
-  tone: "blue" | "amber" | "green" | "red";
-  positions: { label: string; qty: number; color: string }[];
+type Row = { id: string; date: string; model: string; qty: number; status: string; detail?: string };
+type DeliveryNote = Row & { process: string; from: string; to: string; bundle: string; color: string; sizes: string; officer: string; note: string };
+
+const modules = [
+  ["▦", "Dashboard", "Ringkasan seluruh posisi produksi"],
+  ["◇", "Order Produksi", "Target produksi per model, warna, dan ukuran"],
+  ["✂", "Cutting", "Catat hasil potong kain"],
+  ["▱", "Bundle", "Bagi hasil cutting menjadi bundle"],
+  ["▤", "Surat Jalan", "Dokumen wajib setiap perpindahan"],
+  ["↗", "Pengiriman Vendor", "Bundle keluar ke vendor jahit"],
+  ["⌁", "Progres Vendor", "Update setoran dan sisa jahit"],
+  ["□", "Penerimaan Gudang", "Terima setoran vendor bertahap"],
+  ["✓", "Quality Control", "Lolos, repair, dan reject"],
+  ["↻", "Rework", "Pantau barang dalam perbaikan"],
+  ["▣", "Stok Barang Jadi", "Barang lolos QC di gudang"],
+  ["▥", "Laporan", "Rekap WIP dan rekonsiliasi"],
+];
+
+const configs: Record<string, { title: string; desc: string; action: string; columns: string[] }> = {
+  "Order Produksi": { title: "Order Produksi", desc: "Buat target produksi sebagai induk proses jaket.", action: "Buat order", columns: ["Nomor order", "Tanggal", "Model", "Target", "Status"] },
+  Cutting: { title: "Cutting", desc: "Catat kain yang selesai dipotong dan rincian ukurannya.", action: "Catat cutting", columns: ["Nomor cutting", "Tanggal", "Model", "Hasil", "Status"] },
+  Bundle: { title: "Bundle Produksi", desc: "Bagi cutting menjadi unit kerja yang dapat dilacak.", action: "Buat bundle", columns: ["Kode bundle", "Tanggal", "Model", "Jumlah", "Status"] },
+  "Pengiriman Vendor": { title: "Pengiriman ke Vendor", desc: "Pengiriman hanya terbentuk dari surat jalan proses KIRIM-VENDOR.", action: "Buat surat jalan", columns: ["Nomor surat jalan", "Tanggal", "Vendor", "Jumlah", "Status"] },
+  "Progres Vendor": { title: "Progres Vendor Jahit", desc: "Catat jumlah selesai, sedang dikerjakan, dan belum dikerjakan.", action: "Update progres", columns: ["Bundle", "Tanggal update", "Vendor", "Selesai", "Status"] },
+  "Penerimaan Gudang": { title: "Penerimaan Gudang", desc: "Terima setoran mingguan vendor seluruhnya atau sebagian.", action: "Buat surat jalan", columns: ["Nomor surat jalan", "Tanggal", "Asal vendor", "Diterima", "Status"] },
+  "Quality Control": { title: "Quality Control", desc: "Pemeriksaan dapat dilakukan tanpa menunggu seluruh bundle kembali.", action: "Catat hasil QC", columns: ["Nomor QC", "Tanggal", "Model", "Diperiksa", "Status"] },
+  Rework: { title: "Rework / Repair", desc: "Barang repair tetap terlihat hingga kembali dan selesai QC ulang.", action: "Buat surat jalan", columns: ["Nomor rework", "Tanggal", "Tujuan", "Jumlah", "Status"] },
+  "Stok Barang Jadi": { title: "Stok Barang Jadi", desc: "Hanya barang lolos QC yang dapat masuk stok.", action: "Buat surat jalan", columns: ["Nomor surat jalan", "Tanggal", "Model", "Jumlah", "Lokasi"] },
 };
 
-const bundles: Bundle[] = [
-  {
-    code: "SNV-20260721-B001",
-    model: "Supernova",
-    color: "Hitam",
-    vendor: "Konveksi Bintang",
-    qty: 40,
-    progress: 75,
-    status: "Selesai sebagian",
-    due: "30 Jul 2026",
-    tone: "blue",
-    positions: [
-      { label: "Di vendor", qty: 10, color: "#eaaa35" },
-      { label: "Menunggu QC", qty: 6, color: "#7468d7" },
-      { label: "Masuk stok", qty: 24, color: "#269a6a" },
-    ],
-  },
-  {
-    code: "ORN-20260722-B004",
-    model: "Orion",
-    color: "Olive",
-    vendor: "Konveksi Maju",
-    qty: 35,
-    progress: 46,
-    status: "Sedang dikerjakan",
-    due: "2 Agu 2026",
-    tone: "amber",
-    positions: [
-      { label: "Di vendor", qty: 19, color: "#eaaa35" },
-      { label: "Menunggu QC", qty: 8, color: "#7468d7" },
-      { label: "Masuk stok", qty: 8, color: "#269a6a" },
-    ],
-  },
-  {
-    code: "NBL-20260718-B002",
-    model: "Nebula",
-    color: "Navy",
-    vendor: "Konveksi Sinar",
-    qty: 30,
-    progress: 100,
-    status: "Menunggu QC",
-    due: "28 Jul 2026",
-    tone: "green",
-    positions: [
-      { label: "Menunggu QC", qty: 20, color: "#7468d7" },
-      { label: "Rework", qty: 3, color: "#df665a" },
-      { label: "Masuk stok", qty: 7, color: "#269a6a" },
-    ],
-  },
-  {
-    code: "VTX-20260717-B003",
-    model: "Vortex",
-    color: "Maroon",
-    vendor: "Konveksi Karya",
-    qty: 50,
-    progress: 88,
-    status: "Terlambat 3 hari",
-    due: "26 Jul 2026",
-    tone: "red",
-    positions: [
-      { label: "Di vendor", qty: 6, color: "#eaaa35" },
-      { label: "Lolos QC", qty: 8, color: "#3a9ebe" },
-      { label: "Masuk stok", qty: 36, color: "#269a6a" },
-    ],
-  },
-];
+const processCodes: Record<string, string> = {
+  "Cutting ke Gudang Cutting": "CUT-GDG",
+  "Gudang Cutting ke Vendor Jahit": "KRM-VDR",
+  "Vendor Jahit ke Gudang": "TRM-GDG",
+  "Gudang ke Quality Control": "KRM-QC",
+  "Quality Control ke Rework": "KRM-RWK",
+  "Rework ke Quality Control": "TRM-RWK",
+  "Quality Control ke Stok Jadi": "QC-STK",
+};
 
-const vendors = [
-  { name: "Konveksi Bintang", sent: 320, returned: 268, pct: 84, quality: 96 },
-  { name: "Konveksi Karya", sent: 285, returned: 228, pct: 80, quality: 93 },
-  { name: "Konveksi Maju", sent: 240, returned: 178, pct: 74, quality: 95 },
-  { name: "Konveksi Sinar", sent: 195, returned: 164, pct: 84, quality: 97 },
-];
-
-const nav = [
-  ["▦", "Dashboard"],
-  ["◇", "Order Produksi"],
-  ["✂", "Cutting & Bundle"],
-  ["↗", "Pengiriman"],
-  ["⌁", "Progres Vendor"],
-  ["□", "Penerimaan Gudang"],
-  ["✓", "Quality Control"],
-  ["↻", "Rework"],
-  ["▣", "Stok Barang Jadi"],
-  ["▤", "Laporan"],
-];
-
-function Donut() {
-  return (
-    <div className="donut-wrap">
-      <div className="donut"><strong>96.1%</strong><span>lolos QC</span></div>
-      <div className="legend">
-        <div><i style={{ background: "#238b63" }} />Lolos QC <b>347</b></div>
-        <div><i style={{ background: "#edb44b" }} />Rework <b>11</b></div>
-        <div><i style={{ background: "#df665a" }} />Reject <b>3</b></div>
-      </div>
-    </div>
-  );
-}
+function today() { return new Date().toISOString().slice(0, 10); }
+function dateCode(v: string) { return v.replaceAll("-", ""); }
 
 export default function Home() {
-  const [period, setPeriod] = useState("Bulan ini");
+  const [active, setActive] = useState("Dashboard");
   const [query, setQuery] = useState("");
-  const [activeNav, setActiveNav] = useState("Dashboard");
-  const [selected, setSelected] = useState<Bundle | null>(null);
-  const [notice, setNotice] = useState("");
+  const [rows, setRows] = useState<Record<string, Row[]>>({});
+  const [notes, setNotes] = useState<DeliveryNote[]>([]);
+  const [modal, setModal] = useState<null | "record" | "note">(null);
+  const [printNote, setPrintNote] = useState<DeliveryNote | null>(null);
+  const [toast, setToast] = useState("");
+  const [form, setForm] = useState({ date: today(), model: "", code: "", color: "", qty: "", detail: "", process: "Gudang Cutting ke Vendor Jahit", from: "Gudang Cutting", to: "", bundle: "", sizes: "", officer: "", note: "" });
 
-  const filtered = useMemo(
-    () => bundles.filter((b) => `${b.code} ${b.model} ${b.vendor} ${b.status}`.toLowerCase().includes(query.toLowerCase())),
-    [query],
-  );
+  const activeRows = rows[active] ?? [];
+  const filteredNotes = useMemo(() => notes.filter(n => `${n.id} ${n.model} ${n.process} ${n.from} ${n.to}`.toLowerCase().includes(query.toLowerCase())), [notes, query]);
 
-  function quickAction(label: string) {
-    setNotice(`${label} siap dicatat. Form transaksi versi operasional akan dibuka dari menu terkait.`);
-    window.setTimeout(() => setNotice(""), 3200);
+  function flash(message: string) { setToast(message); window.setTimeout(() => setToast(""), 3000); }
+  function openNote(process?: string) {
+    setForm({ date: today(), model: "", code: "", color: "", qty: "", detail: "", process: process ?? "Gudang Cutting ke Vendor Jahit", from: "", to: "", bundle: "", sizes: "", officer: "", note: "" });
+    setModal("note");
+  }
+  function generatedNumber() {
+    const code = (form.code || "JKT").toUpperCase().slice(0, 5);
+    const proc = processCodes[form.process] || "PINDAH";
+    return `SJ-${dateCode(form.date)}-${code}-${proc}-${String(notes.length + 1).padStart(3, "0")}`;
+  }
+  function submitRecord(e: FormEvent) {
+    e.preventDefault();
+    const idPrefix: Record<string, string> = { "Order Produksi": "PO", Cutting: "CUT", Bundle: "BDL", "Progres Vendor": "PRG", "Quality Control": "QC" };
+    const id = `${idPrefix[active] ?? "TRX"}-${(form.code || "JKT").toUpperCase()}-${dateCode(form.date)}-${String(activeRows.length + 1).padStart(3, "0")}`;
+    const row: Row = { id, date: form.date, model: form.model, qty: Number(form.qty), detail: form.detail, status: active === "Quality Control" ? "Menunggu hasil" : "Aktif" };
+    setRows(prev => ({ ...prev, [active]: [...(prev[active] ?? []), row] }));
+    setModal(null); flash(`${id} berhasil dibuat.`);
+  }
+  function submitNote(e: FormEvent) {
+    e.preventDefault();
+    const note: DeliveryNote = { id: form.detail.trim() || generatedNumber(), date: form.date, model: form.model, qty: Number(form.qty), status: "Tercatat", detail: "", process: form.process, from: form.from, to: form.to, bundle: form.bundle, color: form.color, sizes: form.sizes, officer: form.officer, note: form.note };
+    setNotes(prev => [...prev, note]); setModal(null); setPrintNote(note); flash(`${note.id} berhasil dicatat dan siap dicetak.`);
   }
 
   return (
-    <main className="shell">
-      <aside className="sidebar">
-        <div className="brand"><span>ON</span><div><b>CRAFT</b><small>PRODUCTION OS</small></div></div>
-        <p className="nav-label">OPERASIONAL</p>
-        <nav>
-          {nav.map(([icon, label]) => (
-            <button key={label} onClick={() => setActiveNav(label)} className={activeNav === label ? "active" : ""}>
-              <span>{icon}</span>{label}{label === "Quality Control" && <em>24</em>}
-            </button>
-          ))}
-        </nav>
-        <p className="nav-label master">MASTER DATA</p>
-        <nav>
-          <button><span>♙</span>Model Jaket</button>
-          <button><span>⌂</span>Vendor Jahit</button>
-          <button><span>⚙</span>Pengaturan</button>
-        </nav>
-        <div className="side-user">
-          <div className="avatar">AR</div>
-          <div><b>Andi Rahman</b><small>Owner / Admin</small></div>
-          <button aria-label="Menu akun">•••</button>
-        </div>
+    <main className="app-shell">
+      <aside className="app-side">
+        <div className="app-brand"><span>ON</span><div><b>CRAFT</b><small>PRODUCTION OS</small></div></div>
+        <p>OPERASIONAL</p>
+        <nav>{modules.map(([icon, label]) => <button key={label} className={active === label ? "active" : ""} onClick={() => { setActive(label); setQuery(""); }}><i>{icon}</i>{label}{label === "Surat Jalan" && <em>{notes.length}</em>}</button>)}</nav>
+        <div className="user-card"><span>AR</span><div><b>Andi Rahman</b><small>Owner / Admin</small></div></div>
       </aside>
 
-      <section className="content">
-        <header>
-          <label className="search"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari bundle, order, model, atau vendor..." /><kbd>⌘ K</kbd></label>
-          <div className="header-actions"><button className="icon-btn" aria-label="Notifikasi">♢<i /></button><button className="help">?</button></div>
+      <section className="app-main">
+        <header className="topbar">
+          <label><span>⌕</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Cari nomor surat jalan, bundle, model..." /></label>
+          <button className="bell">♢</button><div className="top-avatar">AR</div>
         </header>
 
-        <div className="page">
-          <div className="title-row">
-            <div><p className="eyebrow">RABU, 29 JULI 2026</p><h1>Selamat sore, Andi.</h1><p>Pantau alur produksi dan posisi setiap barang dari satu tempat.</p></div>
-            <div className="filters">
-              <select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Periode">
-                <option>Bulan ini</option><option>Minggu ini</option><option>Hari ini</option><option>Tahun ini</option>
-              </select>
-              <button className="outline">☷ &nbsp;Filter</button>
-              <button className="primary" onClick={() => quickAction("Order produksi baru")}>＋ Order baru</button>
-            </div>
-          </div>
-
-          <div className="alert"><span>!</span><p><b>3 hal perlu perhatian</b><small>2 bundle melewati target selesai dan 1 penerimaan memiliki selisih jumlah.</small></p><button onClick={() => setNotice("Menampilkan bundle dan transaksi yang perlu ditindaklanjuti.")}>Lihat detail →</button></div>
-
-          <div className="metric-grid">
-            <article><div className="metric-icon green">✂</div><p>HASIL CUTTING</p><strong>1.240 <small>unit</small></strong><span className="up">↑ 12,7%</span><small>vs. bulan lalu</small></article>
-            <article><div className="metric-icon amber">⌂</div><p>MASIH DI VENDOR</p><strong>286 <small>unit</small></strong><span className="down">↓ 8,4%</span><small>vs. bulan lalu</small></article>
-            <article><div className="metric-icon violet">◫</div><p>MENUNGGU QC</p><strong>64 <small>unit</small></strong><span className="warn">24</span><small>lebih dari 2 hari</small></article>
-            <article><div className="metric-icon blue">✓</div><p>LOLOS QC</p><strong>347 <small>unit</small></strong><span className="up">↑ 9,2%</span><small>vs. bulan lalu</small></article>
-            <article><div className="metric-icon teal">▣</div><p>MASUK STOK</p><strong>1.008 <small>unit</small></strong><span className="up">↑ 15,6%</span><small>vs. bulan lalu</small></article>
-          </div>
-
-          <div className="flow-card">
-            <div className="section-head"><div><h2>Posisi WIP saat ini</h2><p>Distribusi 1.240 unit hasil cutting aktif</p></div><span>Rekonsiliasi <b>seimbang ✓</b></span></div>
-            <div className="flow">
-              {[
-                ["Gudang cutting", "48", "4 bundle", "cut"],
-                ["Vendor jahit", "286", "12 bundle", "vendor"],
-                ["Gudang hasil", "71", "3 penerimaan", "warehouse"],
-                ["Quality control", "64", "24 terlambat", "qc"],
-                ["Rework", "11", "3 bundle", "repair"],
-                ["Barang jadi", "760", "Siap dijual", "stock"],
-              ].map((x, i) => <div className={`flow-step ${x[3]}`} key={x[0]}><div className="flow-icon">{["✂","⌂","□","✓","↻","▣"][i]}</div><div><small>{x[0]}</small><strong>{x[1]} <em>unit</em></strong><span>{x[2]}</span></div>{i < 5 && <b className="arrow">→</b>}</div>)}
-            </div>
-          </div>
-
-          <div className="split">
-            <article className="panel trend">
-              <div className="section-head"><div><h2>Tren produksi</h2><p>Pergerakan 8 minggu terakhir</p></div><button>8 minggu ⌄</button></div>
-              <div className="chart-area">
-                <div className="ylabels"><span>300</span><span>200</span><span>100</span><span>0</span></div>
-                <div className="bars">
-                  {[["W1",64,52,42],["W2",72,61,48],["W3",58,54,46],["W4",82,68,60],["W5",75,70,64],["W6",90,76,66],["W7",86,80,70],["W8",96,84,78]].map(([w,a,b,c]) =>
-                    <div className="bar-group" key={w}><div className="barset"><i style={{height:`${a}%`}}/><i style={{height:`${b}%`}}/><i style={{height:`${c}%`}}/></div><span>{w}</span></div>
-                  )}
-                </div>
-              </div>
-              <div className="chart-legend"><span><i className="l1"/>Cutting</span><span><i className="l2"/>Selesai jahit</span><span><i className="l3"/>Masuk stok</span></div>
-            </article>
-            <article className="panel qc-card">
-              <div className="section-head"><div><h2>Hasil quality control</h2><p>{period} · 361 unit diperiksa</p></div><button>•••</button></div>
-              <Donut />
-              <div className="qc-note"><span>↗</span><p><b>Kualitas naik 1,8%</b><small>dibandingkan bulan lalu</small></p></div>
-            </article>
-          </div>
-
-          <article className="panel bundle-table">
-            <div className="section-head"><div><h2>Bundle aktif</h2><p>Bundle yang masih bergerak di jalur produksi</p></div><button className="link-btn" onClick={() => setActiveNav("Cutting & Bundle")}>Lihat semua bundle →</button></div>
-            <div className="table-scroll">
-              <table><thead><tr><th>KODE BUNDLE</th><th>MODEL / WARNA</th><th>VENDOR</th><th>JUMLAH</th><th>PROGRES JAHIT</th><th>TARGET</th><th>STATUS</th><th></th></tr></thead>
-              <tbody>{filtered.map((b) => <tr key={b.code} onClick={() => setSelected(b)}>
-                <td><b>{b.code}</b><small>PO-{b.code.slice(0,3)}-202607-00{bundles.indexOf(b)+1}</small></td>
-                <td><b>{b.model}</b><small><i className={`swatch ${b.color.toLowerCase()}`}/>{b.color}</small></td>
-                <td>{b.vendor}</td><td><b>{b.qty}</b> unit</td>
-                <td><div className="progress-label"><span>{Math.round((b.qty*b.progress)/100)} / {b.qty}</span><b>{b.progress}%</b></div><div className="progress"><i style={{width:`${b.progress}%`}}/></div></td>
-                <td>{b.due}</td><td><span className={`status ${b.tone}`}>{b.status}</span></td><td>›</td>
-              </tr>)}</tbody></table>
-            </div>
-          </article>
-
-          <div className="split lower">
-            <article className="panel vendor-panel">
-              <div className="section-head"><div><h2>Kinerja vendor jahit</h2><p>Penyelesaian dan kualitas bulan ini</p></div><button>Detail vendor →</button></div>
-              {vendors.map(v => <div className="vendor-row" key={v.name}><div className="vendor-badge">{v.name.split(" ")[1][0]}</div><div className="vendor-main"><b>{v.name}</b><span>{v.returned} dari {v.sent} unit kembali</span><div className="progress"><i style={{width:`${v.pct}%`}}/></div></div><div className="vendor-stat"><b>{v.pct}%</b><span>Selesai</span></div><div className="vendor-stat quality"><b>{v.quality}%</b><span>Lolos QC</span></div></div>)}
-            </article>
-            <article className="panel activity">
-              <div className="section-head"><div><h2>Aktivitas terbaru</h2><p>Pergerakan barang hari ini</p></div><button>Riwayat →</button></div>
-              {[
-                ["✓","QC selesai","24 unit SNV lolos pemeriksaan","14:32","green"],
-                ["□","Penerimaan gudang","18 unit dari Konveksi Maju","13:08","blue"],
-                ["↗","Bundle dikirim","ORN-B005 · 35 unit ke vendor","10:45","amber"],
-                ["✂","Cutting dicatat","Vortex Maroon · 50 unit","09:20","violet"],
-              ].map(x => <div className="activity-row" key={x[1]}><span className={x[4]}>{x[0]}</span><p><b>{x[1]}</b><small>{x[2]}</small></p><time>{x[3]}</time></div>)}
-            </article>
-          </div>
+        <div className="workspace">
+          {active === "Dashboard" && <Dashboard notes={notes} rows={rows} go={setActive} openNote={openNote} />}
+          {active === "Surat Jalan" && <DeliveryNotes notes={filteredNotes} query={query} setQuery={setQuery} openNote={openNote} onPrint={setPrintNote} />}
+          {active === "Laporan" && <Reports notes={notes} rows={rows} />}
+          {active !== "Dashboard" && active !== "Surat Jalan" && active !== "Laporan" && (
+            <ModulePage active={active} rows={activeRows} onAdd={() => {
+              if (["Pengiriman Vendor", "Penerimaan Gudang", "Rework", "Stok Barang Jadi"].includes(active)) {
+                const process = active === "Pengiriman Vendor" ? "Gudang Cutting ke Vendor Jahit" : active === "Penerimaan Gudang" ? "Vendor Jahit ke Gudang" : active === "Rework" ? "Quality Control ke Rework" : "Quality Control ke Stok Jadi";
+                openNote(process);
+              } else { setForm({ ...form, date: today(), model: "", code: "", qty: "", detail: "" }); setModal("record"); }
+            }} onMove={() => openNote()} />
+          )}
         </div>
       </section>
 
-      {notice && <div className="toast">✓ {notice}</div>}
+      {modal === "record" && <div className="overlay"><form className="form-modal" onSubmit={submitRecord}><button type="button" className="close" onClick={() => setModal(null)}>×</button><p className="overline">{active.toUpperCase()}</p><h2>{configs[active]?.action}</h2><div className="field-grid"><label>Tanggal<input required type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></label><label>Kode jaket<input required maxLength={5} placeholder="Contoh: SNV" value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} /></label><label>Model jaket<input required placeholder="Contoh: Supernova" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} /></label><label>Jumlah unit<input required min="1" type="number" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} /></label><label className="full">Keterangan<input placeholder="Warna, ukuran, vendor, atau catatan" value={form.detail} onChange={e => setForm({ ...form, detail: e.target.value })} /></label></div><div className="form-actions"><button type="button" onClick={() => setModal(null)}>Batal</button><button className="primary">Simpan data</button></div></form></div>}
 
-      {selected && <div className="modal-backdrop" onClick={() => setSelected(null)}>
-        <section className="modal" onClick={(e) => e.stopPropagation()}>
-          <button className="close" onClick={() => setSelected(null)}>×</button>
-          <p className="eyebrow">DETAIL BUNDLE</p><h2>{selected.code}</h2>
-          <p className="modal-sub">{selected.model} · {selected.color} · {selected.qty} unit</p>
-          <div className="modal-meta"><div><small>Vendor jahit</small><b>{selected.vendor}</b></div><div><small>Target selesai</small><b>{selected.due}</b></div></div>
-          <h3>Posisi unit saat ini</h3>
-          <div className="position-bar">{selected.positions.map(p => <i key={p.label} style={{width:`${p.qty/selected.qty*100}%`,background:p.color}} />)}</div>
-          <div className="position-list">{selected.positions.map(p => <div key={p.label}><i style={{background:p.color}}/><span>{p.label}</span><b>{p.qty} unit</b></div>)}</div>
-          <h3>Riwayat terbaru</h3>
-          <div className="timeline"><div><i/><p><b>Setoran diterima gudang</b><span>29 Jul 2026 · 8 unit</span></p></div><div><i/><p><b>Progres vendor diperbarui</b><span>27 Jul 2026 · {selected.progress}% selesai</span></p></div><div><i/><p><b>Bundle dikirim ke vendor</b><span>22 Jul 2026 · {selected.qty} unit</span></p></div></div>
-          <button className="primary modal-action" onClick={() => quickAction("Penerimaan setoran vendor")}>＋ Catat setoran vendor</button>
-        </section>
-      </div>}
+      {modal === "note" && <div className="overlay"><form className="form-modal note-form" onSubmit={submitNote}><button type="button" className="close" onClick={() => setModal(null)}>×</button><p className="overline">DOKUMEN PERPINDAHAN</p><h2>Buat Surat Jalan</h2><div className="auto-number"><small>Nomor otomatis</small><b>{generatedNumber()}</b><span>Nomor manual dapat diisi jika sudah ada surat fisik.</span></div><div className="field-grid">
+        <label>Tanggal surat jalan<input required type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></label>
+        <label>Nomor surat jalan manual <small>(opsional)</small><input placeholder={generatedNumber()} value={form.detail} onChange={e => setForm({ ...form, detail: e.target.value.toUpperCase() })} /></label>
+        <label className="full">Jenis proses<select value={form.process} onChange={e => setForm({ ...form, process: e.target.value })}>{Object.keys(processCodes).map(x => <option key={x}>{x}</option>)}</select></label>
+        <label>Kode jaket<input required maxLength={5} placeholder="SNV" value={form.code} onChange={e => setForm({ ...form, code: e.target.value.toUpperCase() })} /></label>
+        <label>Model jaket<input required placeholder="Supernova" value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} /></label>
+        <label>Warna<input required placeholder="Hitam" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} /></label>
+        <label>Kode bundle<input required placeholder="SNV-20260729-B001" value={form.bundle} onChange={e => setForm({ ...form, bundle: e.target.value.toUpperCase() })} /></label>
+        <label>Jumlah unit<input required min="1" type="number" value={form.qty} onChange={e => setForm({ ...form, qty: e.target.value })} /></label>
+        <label>Rincian ukuran<input placeholder="S: 5, M: 10, L: 10" value={form.sizes} onChange={e => setForm({ ...form, sizes: e.target.value })} /></label>
+        <label>Lokasi asal<input required placeholder="Gudang Cutting" value={form.from} onChange={e => setForm({ ...form, from: e.target.value })} /></label>
+        <label>Lokasi tujuan<input required placeholder="Konveksi Bintang" value={form.to} onChange={e => setForm({ ...form, to: e.target.value })} /></label>
+        <label>Petugas / Pengirim<input required placeholder="Nama petugas" value={form.officer} onChange={e => setForm({ ...form, officer: e.target.value })} /></label>
+        <label>Catatan<input placeholder="Kondisi atau keterangan" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} /></label>
+      </div><div className="form-actions"><button type="button" onClick={() => setModal(null)}>Batal</button><button className="primary">Simpan & lihat cetakan</button></div></form></div>}
+
+      {printNote && <div className="overlay print-overlay"><section className="print-sheet"><div className="print-toolbar"><button onClick={() => setPrintNote(null)}>← Tutup</button><button className="primary" onClick={() => window.print()}>▣ Cetak surat jalan</button></div><div className="print-document"><div className="print-head"><div className="print-brand"><b>ON CRAFT</b><span>PRODUCTION OS</span></div><div><h1>SURAT JALAN</h1><b>{printNote.id}</b></div></div><div className="print-meta"><div><span>Tanggal</span><b>{new Date(`${printNote.date}T00:00:00`).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</b></div><div><span>Jenis proses</span><b>{printNote.process}</b></div><div><span>Dari</span><b>{printNote.from}</b></div><div><span>Tujuan</span><b>{printNote.to}</b></div></div><table><thead><tr><th>Model jaket</th><th>Warna</th><th>Kode bundle</th><th>Ukuran</th><th>Jumlah</th></tr></thead><tbody><tr><td>{printNote.model}</td><td>{printNote.color}</td><td>{printNote.bundle}</td><td>{printNote.sizes || "Campur"}</td><td><b>{printNote.qty} unit</b></td></tr></tbody></table><div className="print-note"><span>Catatan</span><p>{printNote.note || "Tidak ada catatan."}</p></div><div className="signatures"><div><span>Pengirim</span><i/><b>{printNote.officer}</b></div><div><span>Mengetahui</span><i/><b>(........................)</b></div><div><span>Penerima</span><i/><b>(........................)</b></div></div><footer>Dokumen ini menjadi bukti perpindahan barang dan harus disimpan bersama riwayat bundle.</footer></div></section></div>}
+      {toast && <div className="toast">✓ {toast}</div>}
     </main>
   );
+}
+
+function Dashboard({ notes, rows, go, openNote }: { notes: DeliveryNote[]; rows: Record<string, Row[]>; go: (x: string) => void; openNote: () => void }) {
+  const total = (key: string) => (rows[key] ?? []).reduce((s, x) => s + x.qty, 0);
+  const cards = [["Hasil cutting", total("Cutting"), "✂"], ["Bundle aktif", (rows.Bundle ?? []).length, "▱"], ["Masih di vendor", total("Progres Vendor"), "⌂"], ["Menunggu QC", total("Quality Control"), "✓"], ["Masuk stok", total("Stok Barang Jadi"), "▣"]];
+  return <><div className="page-title"><div><p className="overline">DASHBOARD OWNER</p><h1>Alur produksi On Craft</h1><span>Data masih kosong. Mulai dari order produksi atau catat surat jalan perpindahan.</span></div><div><button onClick={() => openNote()}>▤ Buat surat jalan</button><button className="primary" onClick={() => go("Order Produksi")}>＋ Buat order</button></div></div>
+    <div className="empty-banner"><span>i</span><p><b>Workspace produksi siap digunakan</b><small>Belum ada data contoh. Semua angka akan muncul dari input transaksi Anda.</small></p></div>
+    <div className="kpis">{cards.map(([label, value, icon]) => <article key={String(label)}><i>{icon}</i><p>{label}</p><b>{value} <small>{label === "Bundle aktif" ? "bundle" : "unit"}</small></b></article>)}</div>
+    <section className="flow-panel"><div className="section-title"><div><h2>Alur kerja produksi</h2><p>Klik tahap untuk membuka modul dan mulai input.</p></div><span>Rekonsiliasi <b>0 = 0 ✓</b></span></div><div className="workflow">{[["Order Produksi","Order"],["Cutting","Cutting"],["Bundle","Bundle"],["Pengiriman Vendor","Vendor Jahit"],["Penerimaan Gudang","Gudang"],["Quality Control","QC"],["Stok Barang Jadi","Stok Jadi"]].map(([target,label],i)=><button key={target} onClick={()=>go(target)}><i>{["◇","✂","▱","⌂","□","✓","▣"][i]}</i><b>{label}</b><span>0 unit</span>{i<6&&<em>→</em>}</button>)}</div></section>
+    <div className="two-col"><section className="panel empty-panel"><div className="section-title"><div><h2>Aktivitas terbaru</h2><p>Pergerakan dari surat jalan akan tampil di sini.</p></div></div><Empty icon="↔" title="Belum ada pergerakan barang" text="Buat surat jalan pertama untuk memulai riwayat." action="Buat surat jalan" onAction={openNote}/></section><section className="panel empty-panel"><div className="section-title"><div><h2>Perlu perhatian</h2><p>Keterlambatan dan selisih jumlah.</p></div></div><Empty icon="✓" title="Tidak ada peringatan" text="Belum ada transaksi yang perlu diperiksa."/></section></div>
+    {notes.length > 0 && <section className="panel recent"><div className="section-title"><div><h2>Surat jalan terbaru</h2><p>Dokumen perpindahan yang baru dibuat.</p></div><button onClick={()=>go("Surat Jalan")}>Lihat semua →</button></div>{notes.slice(-3).reverse().map(n=><div key={n.id}><b>{n.id}</b><span>{n.process}</span><strong>{n.qty} unit</strong></div>)}</section>}
+  </>;
+}
+
+function DeliveryNotes({ notes, query, setQuery, openNote, onPrint }: { notes: DeliveryNote[]; query: string; setQuery: (x: string) => void; openNote: () => void; onPrint: (x: DeliveryNote) => void }) {
+  return <><div className="page-title"><div><p className="overline">DOKUMEN PERPINDAHAN</p><h1>Surat Jalan</h1><span>Setiap perpindahan barang wajib memiliki nomor surat jalan.</span></div><button className="primary" onClick={openNote}>＋ Buat surat jalan</button></div>
+    <div className="rule-banner"><b>Aturan nomor</b><span>SJ–TANGGAL–KODE JAKET–PROSES–URUT</span><small>Contoh: SJ-20260729-SNV-KRM-VDR-001. Nomor fisik lama juga dapat diinput manual.</small></div>
+    <section className="panel table-panel"><div className="table-tools"><label><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Cari nomor, model, proses, lokasi..." /></label><select><option>Semua proses</option>{Object.keys(processCodes).map(x=><option key={x}>{x}</option>)}</select><button>☷ Filter tanggal</button></div>{notes.length===0?<Empty icon="▤" title="Belum ada surat jalan" text="Buat dokumen pertama saat barang berpindah lokasi." action="Buat surat jalan" onAction={openNote}/>:<div className="scroll"><table><thead><tr><th>NOMOR SURAT JALAN</th><th>TANGGAL</th><th>PROSES</th><th>MODEL / BUNDLE</th><th>DARI → TUJUAN</th><th>JUMLAH</th><th></th></tr></thead><tbody>{notes.map(n=><tr key={n.id}><td><b>{n.id}</b></td><td>{n.date}</td><td><span className="process">{processCodes[n.process]}</span><small>{n.process}</small></td><td><b>{n.model}</b><small>{n.bundle}</small></td><td>{n.from} → {n.to}</td><td><b>{n.qty}</b> unit</td><td><button onClick={()=>onPrint(n)}>▣ Cetak</button></td></tr>)}</tbody></table></div>}</section>
+  </>;
+}
+
+function ModulePage({ active, rows, onAdd, onMove }: { active: string; rows: Row[]; onAdd: () => void; onMove: () => void }) {
+  const c = configs[active]; return <><div className="page-title"><div><p className="overline">OPERASIONAL</p><h1>{c.title}</h1><span>{c.desc}</span></div><div>{!["Order Produksi","Cutting","Bundle"].includes(active)&&<button onClick={onMove}>▤ Surat jalan</button>}<button className="primary" onClick={onAdd}>＋ {c.action}</button></div></div><section className="panel table-panel">{rows.length===0?<Empty icon={active==="Cutting"?"✂":active==="Quality Control"?"✓":"◇"} title={`Belum ada data ${active.toLowerCase()}`} text={`Klik “${c.action}” untuk membuat transaksi pertama.`} action={c.action} onAction={onAdd}/>:<div className="scroll"><table><thead><tr>{c.columns.map(x=><th key={x}>{x.toUpperCase()}</th>)}<th></th></tr></thead><tbody>{rows.map(r=><tr key={r.id}><td><b>{r.id}</b></td><td>{r.date}</td><td><b>{r.model}</b><small>{r.detail}</small></td><td>{r.qty} unit</td><td><span className="status">{r.status}</span></td><td>›</td></tr>)}</tbody></table></div>}</section></>;
+}
+
+function Reports({ notes, rows }: { notes: DeliveryNote[]; rows: Record<string, Row[]> }) {
+  return <><div className="page-title"><div><p className="overline">LAPORAN & REKONSILIASI</p><h1>Laporan Produksi</h1><span>Rekap akan terbentuk dari transaksi, bukan input angka manual.</span></div><button>⇩ Unduh laporan</button></div><div className="report-grid">{["Laporan WIP Produksi","Laporan per Model","Laporan per Vendor","Laporan per Bundle","Laporan Quality Control","Laporan Bulanan"].map(x=><article key={x}><i>▥</i><h3>{x}</h3><p>Belum ada data pada periode ini.</p><button>Lihat laporan →</button></article>)}</div><section className="panel reconcile"><div><h2>Rekonsiliasi jumlah</h2><p>Cutting harus sama dengan total posisi aktif seluruh barang.</p></div><b>{Object.values(rows).flat().length === 0 && notes.length === 0 ? "Belum ada data" : "Periksa transaksi"}</b></section></>;
+}
+
+function Empty({ icon, title, text, action, onAction }: { icon: string; title: string; text: string; action?: string; onAction?: () => void }) {
+  return <div className="empty"><i>{icon}</i><b>{title}</b><p>{text}</p>{action&&<button className="primary" onClick={onAction}>＋ {action}</button>}</div>;
 }
