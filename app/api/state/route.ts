@@ -3,6 +3,7 @@ import { getDb } from "../../../db";
 import { appState } from "../../../db/schema";
 
 const initialState = {
+  dataVersion: 2,
   models: [{
     code: "SNV",
     name: "Supernova",
@@ -27,7 +28,20 @@ export async function GET() {
       await db.insert(appState).values({ id: 1, payload: JSON.stringify(initialState) });
       return Response.json(initialState);
     }
-    return Response.json(JSON.parse(row.payload));
+    const saved = JSON.parse(row.payload);
+    if (saved.dataVersion !== 2) {
+      const resetState = {
+        dataVersion: 2,
+        models: saved.models ?? initialState.models,
+        vendors: saved.vendors ?? initialState.vendors,
+        qcLocations: saved.qcLocations ?? initialState.qcLocations,
+        records: {},
+        notes: [],
+      };
+      await db.update(appState).set({ payload: JSON.stringify(resetState), updatedAt: new Date().toISOString() }).where(eq(appState.id, 1));
+      return Response.json(resetState);
+    }
+    return Response.json(saved);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Database tidak tersedia";
     return Response.json({ error: message }, { status: 500 });
