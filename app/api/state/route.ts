@@ -11,6 +11,10 @@ const initialState = {
     active: true,
   }],
   vendors: [{ code: "VDR-001", name: "Cipedes", contact: "", phone: "", address: "", active: true }],
+  qcLocations: [
+    { code: "QCL-001", location: "Internal", recipient: "Ibu-ibu Internal", phone: "", address: "", active: true },
+    { code: "QCL-002", location: "Tasik", recipient: "Ibu-ibu Tasik", phone: "", address: "", active: true },
+  ],
   records: {},
   notes: [],
 };
