@@ -15,6 +15,10 @@ test("production app has correct metadata and connected workflow", async () => {
   }
   assert.match(page, /Jumlah .*harus sama persis dengan transaksi sumber/);
   assert.match(page, /\["Pengiriman Vendor","Penerimaan Gudang","Pengiriman QC"\]/);
+  assert.match(page, /DASHBOARD OWNER · POSISI FISIK UNIT/);
+  assert.match(page, /BREAKDOWN POSISI UNIT/);
+  assert.match(page, /Gudang & Quality Control/);
+  assert.match(page, /Nomor PO, artikel, warna, ukuran/);
 });
 
 test("one-time reset preserves masters and clears transactions", async () => {
