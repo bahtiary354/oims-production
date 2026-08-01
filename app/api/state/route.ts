@@ -1,6 +1,4 @@
-import { eq } from "drizzle-orm";
-import { getDb } from "../../../db";
-import { appState } from "../../../db/schema";
+import { getSupabaseAdmin } from "../../../db";
 
 const initialState = {
   dataVersion: 2,
@@ -22,13 +20,22 @@ const initialState = {
 
 export async function GET() {
   try {
-    const db = getDb();
-    const [row] = await db.select().from(appState).where(eq(appState.id, 1)).limit(1);
+    const db = getSupabaseAdmin();
+    const { data: row, error } = await db
+      .from("app_state")
+      .select("payload")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error) throw error;
+
     if (!row) {
-      await db.insert(appState).values({ id: 1, payload: JSON.stringify(initialState) });
+      const { error: insertError } = await db
+        .from("app_state")
+        .insert({ id: 1, payload: initialState });
+      if (insertError) throw insertError;
       return Response.json(initialState);
     }
-    const saved = JSON.parse(row.payload);
+    const saved = typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload;
     if (saved.dataVersion !== 2) {
       const resetState = {
         dataVersion: 2,
@@ -38,7 +45,11 @@ export async function GET() {
         records: {},
         notes: [],
       };
-      await db.update(appState).set({ payload: JSON.stringify(resetState), updatedAt: new Date().toISOString() }).where(eq(appState.id, 1));
+      const { error: updateError } = await db
+        .from("app_state")
+        .update({ payload: resetState, updated_at: new Date().toISOString() })
+        .eq("id", 1);
+      if (updateError) throw updateError;
       return Response.json(resetState);
     }
     return Response.json(saved);
@@ -51,9 +62,12 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const payload = await request.json();
-    const db = getDb();
-    await db.insert(appState).values({ id: 1, payload: JSON.stringify(payload) })
-      .onConflictDoUpdate({ target: appState.id, set: { payload: JSON.stringify(payload), updatedAt: new Date().toISOString() } });
+    const db = getSupabaseAdmin();
+    const { error } = await db.from("app_state").upsert(
+      { id: 1, payload, updated_at: new Date().toISOString() },
+      { onConflict: "id" },
+    );
+    if (error) throw error;
     return Response.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Data gagal disimpan";

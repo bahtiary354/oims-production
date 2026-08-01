@@ -22,10 +22,19 @@ test("production app has correct metadata and connected workflow", async () => {
 });
 
 test("one-time reset preserves masters and clears transactions", async () => {
-  const route = await readFile(new URL("app/api/state/route.ts", root), "utf8");
+  const [route, database, packageJson] = await Promise.all([
+    readFile(new URL("app/api/state/route.ts", root), "utf8"),
+    readFile(new URL("db/index.ts", root), "utf8"),
+    readFile(new URL("package.json", root), "utf8"),
+  ]);
   assert.match(route, /models: saved\.models/);
   assert.match(route, /vendors: saved\.vendors/);
   assert.match(route, /qcLocations: saved\.qcLocations/);
   assert.match(route, /records: \{\}/);
   assert.match(route, /notes: \[\]/);
+  assert.match(route, /from\("app_state"\)/);
+  assert.match(database, /createClient/);
+  assert.match(database, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.doesNotMatch(database, /cloudflare:workers/);
+  assert.equal(JSON.parse(packageJson).scripts.build, "next build");
 });
