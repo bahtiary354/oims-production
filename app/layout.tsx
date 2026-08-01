@@ -8,11 +8,11 @@ export async function generateMetadata(): Promise<Metadata> {
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const image = `${protocol}://${host}/og.png`;
   return {
-    title: "On Craft — Production OS",
-    description: "Dashboard WIP produksi jaket dari cutting hingga stok barang jadi.",
-    icons: { icon: "/favicon.svg" },
-    openGraph: { title: "On Craft Production OS", description: "Semua proses produksi. Satu alur yang jelas.", images: [image] },
-    twitter: { card: "summary_large_image", title: "On Craft Production OS", description: "Semua proses produksi. Satu alur yang jelas.", images: [image] },
+    title: "Oims — Production Management",
+    description: "Dashboard posisi fisik produksi jaket dari cutting hingga stok barang jadi.",
+    icons: { icon: "/oims-logo.jpg" },
+    openGraph: { title: "Oims Production Management", description: "Posisi barang produksi dalam satu tampilan yang jelas.", images: [image] },
+    twitter: { card: "summary_large_image", title: "Oims Production Management", description: "Posisi barang produksi dalam satu tampilan yang jelas.", images: [image] },
   };
 }
 

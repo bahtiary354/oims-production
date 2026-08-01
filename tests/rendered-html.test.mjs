@@ -9,7 +9,7 @@ test("production app has correct metadata and connected workflow", async () => {
     readFile(new URL("app/layout.tsx", root), "utf8"),
     readFile(new URL("app/page.tsx", root), "utf8"),
   ]);
-  assert.match(layout, /On Craft Production OS/);
+  assert.match(layout, /Oims Production Management/);
   for (const stage of ["Order Produksi", "Cutting", "Bundle", "Pengiriman Vendor", "Penerimaan Gudang", "Pengiriman QC", "Quality Control", "Rework", "Stok Barang Jadi"]) {
     assert.match(page, new RegExp(stage));
   }
