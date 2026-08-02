@@ -19,6 +19,10 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /BREAKDOWN POSISI UNIT/);
   assert.match(page, /Gudang & Quality Control/);
   assert.match(page, /Nomor PO, artikel, warna, ukuran/);
+  assert.match(page, /QC langsung di lokasi vendor/);
+  assert.match(page, /Hasil QC vendor harus terbagi tepat/);
+  assert.match(page, /Selesai diperiksa di vendor/);
+  assert.match(page, /qcMode!=="vendor"/);
 });
 
 test("one-time reset clears all data and masters remain manageable", async () => {
