@@ -1,19 +1,10 @@
 import { getSupabaseAdmin } from "../../../db";
 
 const initialState = {
-  dataVersion: 2,
-  models: [{
-    code: "SNV",
-    name: "Supernova",
-    colors: ["Hitam", "Navy"],
-    sizes: ["M", "L", "XL", "XXL", "XXXL"],
-    active: true,
-  }],
-  vendors: [{ code: "VDR-001", name: "Cipedes", contact: "", phone: "", address: "", active: true }],
-  qcLocations: [
-    { code: "QCL-001", location: "Internal", recipient: "Ibu-ibu Internal", phone: "", address: "", active: true },
-    { code: "QCL-002", location: "Tasik", recipient: "Ibu-ibu Tasik", phone: "", address: "", active: true },
-  ],
+  dataVersion: 3,
+  models: [],
+  vendors: [],
+  qcLocations: [],
   records: {},
   notes: [],
 };
@@ -36,14 +27,9 @@ export async function GET() {
       return Response.json(initialState);
     }
     const saved = typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload;
-    if (saved.dataVersion !== 2) {
+    if (saved.dataVersion !== 3) {
       const resetState = {
-        dataVersion: 2,
-        models: saved.models ?? initialState.models,
-        vendors: saved.vendors ?? initialState.vendors,
-        qcLocations: saved.qcLocations ?? initialState.qcLocations,
-        records: {},
-        notes: [],
+        ...initialState,
       };
       const { error: updateError } = await db
         .from("app_state")

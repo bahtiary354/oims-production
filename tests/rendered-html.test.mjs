@@ -21,17 +21,22 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Nomor PO, artikel, warna, ukuran/);
 });
 
-test("one-time reset preserves masters and clears transactions", async () => {
+test("one-time reset clears all data and masters remain manageable", async () => {
   const [route, database, packageJson] = await Promise.all([
     readFile(new URL("app/api/state/route.ts", root), "utf8"),
     readFile(new URL("db/index.ts", root), "utf8"),
     readFile(new URL("package.json", root), "utf8"),
   ]);
-  assert.match(route, /models: saved\.models/);
-  assert.match(route, /vendors: saved\.vendors/);
-  assert.match(route, /qcLocations: saved\.qcLocations/);
+  assert.match(route, /dataVersion: 3/);
+  assert.match(route, /models: \[\]/);
+  assert.match(route, /vendors: \[\]/);
+  assert.match(route, /qcLocations: \[\]/);
   assert.match(route, /records: \{\}/);
   assert.match(route, /notes: \[\]/);
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  assert.match(page, /deleteModel/);
+  assert.match(page, /deleteVendor/);
+  assert.match(page, /deleteQCLocation/);
   assert.match(route, /from\("app_state"\)/);
   assert.match(database, /createClient/);
   assert.match(database, /SUPABASE_SERVICE_ROLE_KEY/);
