@@ -32,6 +32,7 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /className="mobile-bottom-nav"/);
   assert.match(page, /aria-label="Buka semua menu"/);
   assert.match(css, /\.app-side\.mobile-open/);
+  assert.match(css, /\.overlay\{z-index:120;padding:10px\}/);
   assert.match(css, /grid-template-columns:repeat\(5,1fr\)/);
   assert.match(page, /\["▥","Laporan"\],\["▤","Surat Jalan"\]\]/);
   const navLine = page.split("\n").find((line) => line.startsWith("const nav = "));
