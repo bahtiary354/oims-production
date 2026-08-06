@@ -40,6 +40,10 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Lolos semua/);
   assert.match(css, /2026 visual refresh/);
   assert.match(css, /--green:#2563eb/);
+  assert.match(page, /QC Vendor Selesai/);
+  assert.match(page, /Lolos QC · Menunggu Stok/);
+  assert.match(page, /Hasil lolos QC menunggu stok/);
+  assert.match(page, /Rework:pendingReworkRows/);
 });
 
 test("one-time reset clears all data and masters remain manageable", async () => {
