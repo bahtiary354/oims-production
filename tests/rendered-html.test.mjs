@@ -23,6 +23,12 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Hasil QC vendor harus terbagi tepat/);
   assert.match(page, /Selesai diperiksa di vendor/);
   assert.match(page, /qcMode!=="vendor"/);
+  assert.match(page, /className="print-detail-table"/);
+  assert.match(page, /NOMOR SURAT JALAN/);
+  assert.match(page, /colors\.map\(\(c,index\)/);
+  const css = await readFile(new URL("app/globals.css", root), "utf8");
+  assert.match(css, /\.print-detail-table th,\.print-detail-table td\{font-size:14px/);
+  assert.match(css, /\.print-head h1\{font-size:22px/);
 });
 
 test("one-time reset clears all data and masters remain manageable", async () => {
