@@ -34,6 +34,9 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(css, /\.app-side\.mobile-open/);
   assert.match(css, /grid-template-columns:repeat\(5,1fr\)/);
   assert.match(page, /\["▥","Laporan"\],\["▤","Surat Jalan"\]\]/);
+  const navLine = page.split("\n").find((line) => line.startsWith("const nav = "));
+  assert.ok(navLine, "primary navigation should be defined");
+  assert.doesNotMatch(navLine, /Pengiriman QC|Rework|Stok Barang Jadi/);
   assert.match(page, /Pekerjaan berikutnya/);
   assert.match(page, /PO menunggu Cutting/);
   assert.match(page, /Isi seluruh sisa setoran/);

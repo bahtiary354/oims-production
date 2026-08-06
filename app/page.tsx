@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const stages = ["Order Produksi", "Cutting", "Bundle", "Pengiriman Vendor", "Penerimaan Gudang", "Pengiriman QC", "Quality Control", "Rework", "Stok Barang Jadi"];
-const nav = [["▦","Dashboard"],["♙","Master Jaket"],["⌂","Master Vendor"],["◎","Master Tujuan QC"],["◇","Order Produksi"],["✂","Cutting"],["▱","Bundle"],["↗","Pengiriman Vendor"],["□","Penerimaan Gudang"],["⇢","Pengiriman QC"],["✓","Quality Control"],["↻","Rework"],["▣","Stok Barang Jadi"],["▥","Laporan"],["▤","Surat Jalan"]];
+const nav = [["▦","Dashboard"],["♙","Master Jaket"],["⌂","Master Vendor"],["◎","Master Tujuan QC"],["◇","Order Produksi"],["✂","Cutting"],["▱","Bundle"],["↗","Pengiriman Vendor"],["□","Penerimaan Gudang"],["✓","Quality Control"],["▥","Laporan"],["▤","Surat Jalan"]];
 const mobileQuickNav = [["▦","Dashboard","Beranda"],["◇","Order Produksi","PO"],["↗","Pengiriman Vendor","Vendor"],["□","Penerimaan Gudang","Gudang"],["✓","Quality Control","QC"]];
 const stageInfo: Record<string, { prefix: string; title: string; desc: string; source?: string; move?: string }> = {
   "Order Produksi": { prefix:"PO", title:"Order Produksi", desc:"Induk seluruh proses; jumlah dibuat per warna dan ukuran." },
