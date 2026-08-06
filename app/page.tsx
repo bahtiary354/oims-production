@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const stages = ["Order Produksi", "Cutting", "Bundle", "Pengiriman Vendor", "Penerimaan Gudang", "Pengiriman QC", "Quality Control", "Rework", "Stok Barang Jadi"];
 const nav = [["▦","Dashboard"],["♙","Master Jaket"],["⌂","Master Vendor"],["◎","Master Tujuan QC"],["◇","Order Produksi"],["✂","Cutting"],["▱","Bundle"],["▤","Surat Jalan"],["↗","Pengiriman Vendor"],["□","Penerimaan Gudang"],["⇢","Pengiriman QC"],["✓","Quality Control"],["↻","Rework"],["▣","Stok Barang Jadi"],["▥","Laporan"]];
+const mobileQuickNav = [["▦","Dashboard","Beranda"],["◇","Order Produksi","PO"],["↗","Pengiriman Vendor","Vendor"],["□","Penerimaan Gudang","Gudang"],["✓","Quality Control","QC"]];
 const stageInfo: Record<string, { prefix: string; title: string; desc: string; source?: string; move?: string }> = {
   "Order Produksi": { prefix:"PO", title:"Order Produksi", desc:"Induk seluruh proses; jumlah dibuat per warna dan ukuran." },
   Cutting: { prefix:"CUT", title:"Cutting", desc:"Hasil potong mengikuti rincian PO.", source:"Order Produksi" },
@@ -75,6 +76,7 @@ function LiveStageStatus({active,rows,allRecords}:{active:string;rows:RecordRow[
 
 export default function Home(){
   const [active,setActive]=useState("Dashboard");
+  const [mobileMenu,setMobileMenu]=useState(false);
   const [data,setData]=useState<AppData>(initial);
   const [loaded,setLoaded]=useState(false);
   const [saving,setSaving]=useState(false);
@@ -227,8 +229,9 @@ export default function Home(){
   const filteredNotes=useMemo(()=>data.notes.filter(n=>`${n.id} ${n.sourceId} ${n.modelName} ${n.process}`.toLowerCase().includes(query.toLowerCase())),[data.notes,query]);
 
   return <main className="app-shell">
-    <aside className="app-side"><div className="app-brand"><img src="/oims-logo.jpg" alt="Logo Oims"/><div><b>Oims</b><small>PRODUCTION MANAGEMENT</small></div></div><p>OPERASIONAL</p><nav>{nav.map(([i,n])=><button key={n} className={active===n?"active":""} onClick={()=>setActive(n)}><i>{i}</i>{n}{n==="Surat Jalan"&&<em>{data.notes.length}</em>}</button>)}</nav><div className="user-card"><span>AR</span><div><b>Andi Rahman</b><small>{saving?"Menyimpan...":"Data tersimpan"}</small></div></div></aside>
-    <section className="app-main"><header className="topbar"><label><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Cari PO, bundle, surat jalan..." /></label><span className={`sync ${saving?"busy":""}`}>{saving?"● Menyimpan":"✓ Tersimpan"}</span><div className="top-avatar">AR</div></header><div className="workspace">
+    {mobileMenu&&<button className="mobile-menu-backdrop" aria-label="Tutup menu" onClick={()=>setMobileMenu(false)}/>}
+    <aside className={`app-side ${mobileMenu?"mobile-open":""}`}><div className="app-brand"><img src="/oims-logo.jpg" alt="Logo Oims"/><div><b>Oims</b><small>PRODUCTION MANAGEMENT</small></div><button className="mobile-menu-close" aria-label="Tutup menu" onClick={()=>setMobileMenu(false)}>×</button></div><p>OPERASIONAL</p><nav>{nav.map(([i,n])=><button key={n} className={active===n?"active":""} onClick={()=>{setActive(n);setMobileMenu(false)}}><i>{i}</i>{n}{n==="Surat Jalan"&&<em>{data.notes.length}</em>}</button>)}</nav><div className="user-card"><span>AR</span><div><b>Andi Rahman</b><small>{saving?"Menyimpan...":"Data tersimpan"}</small></div></div></aside>
+    <section className="app-main"><header className="topbar"><button className="mobile-menu-button" aria-label="Buka semua menu" onClick={()=>setMobileMenu(true)}>☰</button><label><span>⌕</span><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Cari PO, bundle, surat jalan..." /></label><span className={`sync ${saving?"busy":""}`}>{saving?"● Menyimpan":"✓ Tersimpan"}</span><div className="top-avatar">AR</div></header><div className="workspace">
       {!loaded?<div className="loading">Menyiapkan data produksi…</div>:<>
         {active==="Dashboard"&&<><Dashboard data={data} go={setActive}/><OwnerVendorMonitoring data={data}/></>}
         {active==="Master Jaket"&&<Master data={data} onAdd={()=>{setEditingCode(null);setForm(emptyForm);setModal("master")}} onEdit={m=>{setEditingCode(m.code);setForm({...emptyForm,code:m.code,name:m.name,colors:m.colors.join(", "),sizes:m.sizes.join(", ")});setModal("master")}} onDelete={deleteModel}/>}
@@ -253,6 +256,7 @@ export default function Home(){
 
     {modal==="qcLocation"&&<div className="overlay"><form className="form-modal" onSubmit={addQCLocation}><button className="close" type="button" onClick={()=>setModal(null)}>×</button><p className="overline">MASTER DATA</p><h2>Tambah Tujuan & Penerima QC</h2><div className="field-grid"><label>Nama lokasi<input required placeholder="Contoh: Internal" value={qcLocationForm.location} onChange={e=>setQcLocationForm({...qcLocationForm,location:e.target.value})}/></label><label>Nama penerima<input required placeholder="Nama orang / kelompok penerima" value={qcLocationForm.recipient} onChange={e=>setQcLocationForm({...qcLocationForm,recipient:e.target.value})}/></label><label>Nomor telepon<input placeholder="08..." value={qcLocationForm.phone} onChange={e=>setQcLocationForm({...qcLocationForm,phone:e.target.value})}/></label><label>Alamat lokasi<input placeholder="Alamat tujuan QC" value={qcLocationForm.address} onChange={e=>setQcLocationForm({...qcLocationForm,address:e.target.value})}/></label></div><div className="form-actions"><button type="button" onClick={()=>setModal(null)}>Batal</button><button className="primary">Simpan tujuan</button></div></form></div>}
     {print&&<PrintNote note={print} close={()=>setPrint(null)}/>}
+    <nav className="mobile-bottom-nav" aria-label="Akses cepat">{mobileQuickNav.map(([icon,name,label])=><button key={name} className={active===name?"active":""} onClick={()=>{setActive(name);setMobileMenu(false)}}><i>{icon}</i><span>{label}</span></button>)}</nav>
     {toast&&<div className="toast">✓ {toast}</div>}
   </main>
 }

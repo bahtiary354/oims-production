@@ -29,6 +29,10 @@ test("production app has correct metadata and connected workflow", async () => {
   const css = await readFile(new URL("app/globals.css", root), "utf8");
   assert.match(css, /\.print-detail-table th,\.print-detail-table td\{font-size:14px/);
   assert.match(css, /\.print-head h1\{font-size:22px/);
+  assert.match(page, /className="mobile-bottom-nav"/);
+  assert.match(page, /aria-label="Buka semua menu"/);
+  assert.match(css, /\.app-side\.mobile-open/);
+  assert.match(css, /grid-template-columns:repeat\(5,1fr\)/);
 });
 
 test("one-time reset clears all data and masters remain manageable", async () => {
