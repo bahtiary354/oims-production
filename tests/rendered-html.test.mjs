@@ -50,7 +50,7 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Rework:pendingReworkRows/);
 });
 
-test("one-time reset clears all data and masters remain manageable", async () => {
+test("persistent state is normalized without destructive reads and masters remain manageable", async () => {
   const [route, database, packageJson] = await Promise.all([
     readFile(new URL("app/api/state/route.ts", root), "utf8"),
     readFile(new URL("db/index.ts", root), "utf8"),
@@ -62,6 +62,10 @@ test("one-time reset clears all data and masters remain manageable", async () =>
   assert.match(route, /qcLocations: \[\]/);
   assert.match(route, /records: \{\}/);
   assert.match(route, /notes: \[\]/);
+  assert.match(route, /normalizeState/);
+  assert.doesNotMatch(route, /saved\.dataVersion !== 3/);
+  assert.match(route, /id: 2, payload: current\.payload/);
+  assert.match(route, /state saved with backup/);
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   assert.match(page, /deleteModel/);
   assert.match(page, /deleteVendor/);
