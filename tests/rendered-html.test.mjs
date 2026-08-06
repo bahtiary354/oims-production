@@ -34,6 +34,12 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(css, /\.app-side\.mobile-open/);
   assert.match(css, /grid-template-columns:repeat\(5,1fr\)/);
   assert.match(page, /\["▥","Laporan"\],\["▤","Surat Jalan"\]\]/);
+  assert.match(page, /Pekerjaan berikutnya/);
+  assert.match(page, /PO menunggu Cutting/);
+  assert.match(page, /Isi seluruh sisa setoran/);
+  assert.match(page, /Lolos semua/);
+  assert.match(css, /2026 visual refresh/);
+  assert.match(css, /--green:#2563eb/);
 });
 
 test("one-time reset clears all data and masters remain manageable", async () => {
