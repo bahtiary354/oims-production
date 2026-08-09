@@ -48,6 +48,11 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Lolos QC · Menunggu Stok/);
   assert.match(page, /Hasil lolos QC menunggu stok/);
   assert.match(page, /Rework:pendingReworkRows/);
+  assert.match(page, /className="production-board"/);
+  assert.match(page, /Posisi pekerjaan saat ini/);
+  assert.match(page, /RINCIAN TAHAP/);
+  assert.match(css, /grid-auto-flow:column/);
+  assert.match(css, /grid-auto-columns:82vw/);
 });
 
 test("persistent state is normalized without destructive reads and masters remain manageable", async () => {
