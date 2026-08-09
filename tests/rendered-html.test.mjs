@@ -61,6 +61,11 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /qcLocationForReceipt/);
   assert.match(page, /Vendor Jahit & Pengaturan QC/);
   assert.match(page, /Tujuan QC masih dipakai vendor/);
+  assert.match(page, /Pilih bundle dalam surat jalan ini/);
+  assert.match(page, /bundleIds:bundles\.map/);
+  assert.match(page, /deliveryNoteId/);
+  assert.match(page, /BDL-\$\{model\.code\}-P/);
+  assert.match(css, /\.shipment-bundle-picker/);
 });
 
 test("persistent state is normalized without destructive reads and masters remain manageable", async () => {
