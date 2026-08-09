@@ -53,6 +53,10 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /RINCIAN TAHAP/);
   assert.match(css, /grid-auto-flow:column/);
   assert.match(css, /grid-auto-columns:82vw/);
+  assert.match(page, /automaticModelCode/);
+  assert.match(page, /Kode terkunci karena sudah digunakan dalam PO/);
+  assert.match(page, /Dibuat otomatis, tetapi masih dapat diganti sebelum digunakan dalam PO/);
+  assert.match(page, /x\.modelCode===editingCode/);
 });
 
 test("persistent state is normalized without destructive reads and masters remain manageable", async () => {
