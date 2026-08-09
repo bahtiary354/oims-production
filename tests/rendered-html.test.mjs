@@ -38,6 +38,7 @@ test("production app has correct metadata and connected workflow", async () => {
   const navLine = page.split("\n").find((line) => line.startsWith("const nav = "));
   assert.ok(navLine, "primary navigation should be defined");
   assert.doesNotMatch(navLine, /Pengiriman QC|Rework|Stok Barang Jadi/);
+  assert.doesNotMatch(navLine, /Master Tujuan QC/);
   assert.match(page, /Pekerjaan berikutnya/);
   assert.match(page, /PO menunggu Cutting/);
   assert.match(page, /Isi seluruh sisa setoran/);
@@ -57,6 +58,9 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Kode terkunci karena sudah digunakan dalam PO/);
   assert.match(page, /Dibuat otomatis, tetapi masih dapat diganti sebelum digunakan dalam PO/);
   assert.match(page, /x\.modelCode===editingCode/);
+  assert.match(page, /qcLocationForReceipt/);
+  assert.match(page, /Vendor Jahit & Pengaturan QC/);
+  assert.match(page, /Tujuan QC masih dipakai vendor/);
 });
 
 test("persistent state is normalized without destructive reads and masters remain manageable", async () => {
