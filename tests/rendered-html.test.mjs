@@ -63,15 +63,16 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(navBlock, /Pengiriman QC/);
   assert.match(navBlock, /Rework/);
   assert.match(navBlock, /Stok Barang Jadi/);
-  assert.match(page, /Pekerjaan berikutnya/);
-  assert.match(page, /PO menunggu Cutting/);
+  assert.doesNotMatch(page, /Pekerjaan berikutnya/);
+  assert.doesNotMatch(page, /Geser ke samping untuk melihat alur PO/);
+  assert.doesNotMatch(page, /ALUR PRODUKSI/);
+  assert.match(page, /TAHAP AKTIF/);
   assert.match(page, /Isi seluruh sisa setoran/);
   assert.match(page, /Lolos semua/);
   assert.match(css, /2026 visual refresh/);
   assert.match(css, /--green:#2563eb/);
   assert.match(page, /QC Vendor Selesai/);
   assert.match(page, /Lolos · Belum Stok/);
-  assert.match(page, /Hasil lolos QC menunggu stok/);
   assert.match(page, /Rework:\s*withBalance/);
   assert.match(page, /Penerimaan Rework/);
   assert.match(page, /QC Ulang/);
@@ -100,7 +101,10 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /remainingAtPO/);
   assert.match(page, /CUT-\$\{model\.code\}-\$\{poToken/);
   assert.match(page, /PO-\$\{model\.code\}-\$\{periodYYMM/);
-  assert.match(page, /KRM.*nextLotCode|nextLotCode\("Pengiriman Vendor", "KRM"/s);
+  assert.match(
+    page,
+    /KRM.*nextLotCode|nextLotCode\("Pengiriman Vendor", "KRM"/s,
+  );
   assert.match(page, /function traceBundleId/);
   assert.match(page, /Bundle \/ Lot/);
   assert.match(page, /bundleId: active === "Bundle" \? recordId/);

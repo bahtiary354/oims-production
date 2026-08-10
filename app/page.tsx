@@ -4578,164 +4578,39 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
   const totalWip = cards
       .filter((x) => x.key !== "Stok Barang Jadi")
       .reduce((n, x) => n + x.value, 0),
+    activeStages = cards.filter(
+      (x) => x.key !== "Stok Barang Jadi" && x.value > 0,
+    ).length,
     selected = breakdown ? (positions[breakdown] ?? []) : [],
     issues = reconcileData(data);
-  const tasks = [
-    {
-      stage: "Cutting",
-      icon: "✂",
-      title: "PO menunggu Cutting",
-      items: positions["Order Produksi"].length,
-      units: units("Order Produksi"),
-      action: "Proses Cutting",
-    },
-    {
-      stage: "Bundle",
-      icon: "▱",
-      title: "Cutting menunggu Bundle",
-      items: positions.Cutting.length,
-      units: units("Cutting"),
-      action: "Buat Bundle",
-    },
-    {
-      stage: "Pengiriman Vendor",
-      icon: "↗",
-      title: "Bundle siap dikirim",
-      items: positions.Bundle.length,
-      units: units("Bundle"),
-      action: "Kirim Vendor",
-    },
-    {
-      stage: "Penerimaan Gudang",
-      icon: "□",
-      title: "Pekerjaan masih di Vendor",
-      items: positions["Pengiriman Vendor"].length,
-      units: units("Pengiriman Vendor"),
-      action: "Catat Setoran",
-    },
-    {
-      stage: "Pengiriman QC",
-      icon: "⇢",
-      title: "Setoran menunggu kirim QC",
-      items: positions["Penerimaan Gudang"].length,
-      units: units("Penerimaan Gudang"),
-      action: "Kirim QC",
-    },
-    {
-      stage: "Quality Control",
-      icon: "✓",
-      title: "Kiriman menunggu pemeriksaan",
-      items: positions["Pengiriman QC"].length,
-      units: units("Pengiriman QC"),
-      action: "Periksa QC",
-    },
-    {
-      stage: "Stok Barang Jadi",
-      icon: "▣",
-      title: "Hasil lolos QC menunggu stok",
-      items: pendingStockRows.length,
-      units: pendingStockRows.reduce((n, x) => n + x.total, 0),
-      action: "Masukkan Stok",
-    },
-    {
-      stage: "Rework",
-      icon: "↻",
-      title: "Hasil QC perlu tindak lanjut",
-      items: pendingReworkRows.length,
-      units: pendingReworkRows.reduce((n, x) => n + x.total, 0),
-      action: "Proses Rework",
-    },
-    {
-      stage: "Penerimaan Rework",
-      icon: "□",
-      title: "Barang sedang diperbaiki vendor",
-      items: positions.Rework.length,
-      units: units("Rework"),
-      action: "Terima Rework",
-    },
-    {
-      stage: "QC Ulang",
-      icon: "✓",
-      title: "Hasil Rework menunggu QC ulang",
-      items: positions["Penerimaan Rework"].length,
-      units: units("Penerimaan Rework"),
-      action: "Periksa Ulang",
-    },
-    {
-      stage: "Karantina Reject",
-      icon: "!",
-      title: "Reject perlu dikarantina",
-      items: pendingRejectRows.length,
-      units: pendingRejectRows.reduce((n, x) => n + x.total, 0),
-      action: "Catat Reject",
-    },
-  ].filter((x) => x.items > 0 || x.units > 0);
   return (
     <div className="owner-simple">
-      <div className="page-title owner-title">
-        <div>
-          <p className="overline">OIMS · DASHBOARD OWNER</p>
-          <h1>Board produksi</h1>
-          <span>Geser ke samping untuk melihat alur PO sampai stok jadi.</span>
-        </div>
-        <button className="primary" onClick={() => go("Order Produksi")}>
-          ＋ Buat PO Produksi
-        </button>
-      </div>
       <div className="owner-health">
-        <b>{totalWip} unit masih dalam proses</b>
+        <div className="owner-health-mark">◎</div>
+        <div className="owner-health-metric">
+          <span>MASIH DALAM PROSES</span>
+          <b>{totalWip}</b>
+          <small>unit</small>
+        </div>
+        <div className="owner-health-metric">
+          <span>TAHAP AKTIF</span>
+          <b>{activeStages}</b>
+          <small>proses</small>
+        </div>
+        <div className="owner-health-metric">
+          <span>STOK JADI</span>
+          <b>{stock}</b>
+          <small>unit</small>
+        </div>
         <span className={issues.length ? "warning" : "ok"}>
           {issues.length
             ? `${issues.length} data perlu dicek`
             : "✓ Data sinkron"}
         </span>
       </div>
-      <section className="work-queue">
-        <header>
-          <div>
-            <p className="overline">ANTREAN KERJA</p>
-            <h2>Pekerjaan berikutnya</h2>
-            <span>
-              Pilih tugas dan lanjutkan transaksi tanpa mencari dari awal.
-            </span>
-          </div>
-          <b>
-            {tasks.length}
-            <small> tugas aktif</small>
-          </b>
-        </header>
-        {tasks.length === 0 ? (
-          <div className="work-queue-empty">
-            <i>✓</i>
-            <div>
-              <b>Tidak ada antrean</b>
-              <span>Semua proses sudah ditindaklanjuti.</span>
-            </div>
-          </div>
-        ) : (
-          <div>
-            {tasks.map((task, index) => (
-              <article key={task.stage}>
-                <span className="work-number">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <i>{task.icon}</i>
-                <div>
-                  <b>{task.title}</b>
-                  <span>
-                    {task.items} transaksi · {task.units} unit
-                  </span>
-                </div>
-                <button onClick={() => go(task.stage)}>{task.action} →</button>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
       <section className="production-board-panel">
         <header>
           <div>
-            <p className="overline">ALUR PRODUKSI</p>
             <h2>Posisi pekerjaan saat ini</h2>
             <span>
               Kartu tersusun ke bawah. Klik tahap atau kartu untuk membuka
