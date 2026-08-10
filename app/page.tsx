@@ -193,6 +193,7 @@ type RecordRow = {
   poId?: string;
   batchNo?: number;
   bundleNo?: number;
+  bundleId?: string;
   deliveryNoteId?: string;
 };
 type Note = {
@@ -211,6 +212,21 @@ type Note = {
   note?: string;
   bundleIds?: string[];
 };
+
+function periodYYMM(date: string) {
+  return `${date.slice(2, 4)}${date.slice(5, 7)}`;
+}
+function poLotToken(poId?: string) {
+  if (!poId) return "";
+  const parts = poId.split("-");
+  const period = parts.at(-2) ?? "";
+  const sequence = parts.at(-1) ?? "000";
+  const shortPeriod = period.length === 6 ? period.slice(2) : period;
+  return `${shortPeriod}P${sequence}`;
+}
+function shortBundleCode(bundleId?: string) {
+  return bundleId?.match(/B\d{3}$/)?.[0] ?? bundleId ?? "—";
+}
 type AppData = {
   dataVersion: number;
   models: Model[];
@@ -1589,6 +1605,35 @@ export default function Home() {
       .find((x) => x.id === source.sourceId);
     return parent ? tracePOId(parent) : undefined;
   }
+  function traceBundleId(source?: RecordRow): string | undefined {
+    if (!source) return undefined;
+    if (source.bundleId) return source.bundleId;
+    if (source.stage === "Bundle") return source.id;
+    const parent = Object.values(data.records)
+      .flat()
+      .find((x) => x.id === source.sourceId);
+    return parent ? traceBundleId(parent) : undefined;
+  }
+  function nextLotCode(
+    stage: string,
+    prefix: string,
+    modelCode: string,
+    poId: string | undefined,
+    bundleId: string | undefined,
+    marker = "",
+  ) {
+    if (!poId || !bundleId)
+      return code(
+        prefix,
+        modelCode,
+        (data.records[stage] ?? []).length,
+        form.date,
+      );
+    const count = (data.records[stage] ?? []).filter(
+      (x) => (x.bundleId ?? traceBundleId(x)) === bundleId,
+    ).length;
+    return `${prefix}-${modelCode}-${poLotToken(poId)}-${shortBundleCode(bundleId)}-${marker}${String(count + 1).padStart(2, "0")}`;
+  }
   function traceOriginVendor(source?: RecordRow): string | undefined {
     if (!source) return undefined;
     if (source.originVendor) return source.originVendor;
@@ -2139,25 +2184,31 @@ export default function Home() {
         );
         return;
       }
-      const deliveryNoteId = `SJ-${form.date.replaceAll("-", "")}-${model.code}-KRM-${String(data.notes.length + 1).padStart(3, "0")}`;
-      const start = (data.records["Pengiriman Vendor"] ?? []).length,
-        shipments: RecordRow[] = bundles.map((bundle, index) => ({
-          id: code("KRM", model.code, start + index, form.date),
-          stage: active,
-          date: form.date,
-          modelCode: model.code,
-          modelName: model.name,
-          sourceId: bundle.id,
-          variants: bundle.variants,
-          total: bundle.total,
-          status: "Aktif",
-          destination: form.destination,
-          note: form.note,
-          poId: bundle.poId,
-          batchNo: bundle.batchNo,
-          bundleNo: bundle.bundleNo,
-          deliveryNoteId,
-        }));
+      const deliveryNoteId = `SJ-${form.date.replaceAll("-", "").slice(2)}-${model.code}-KRM-${String(data.notes.length + 1).padStart(3, "0")}`;
+      const shipments: RecordRow[] = bundles.map((bundle) => ({
+        id: nextLotCode(
+          "Pengiriman Vendor",
+          "KRM",
+          model.code,
+          bundle.poId,
+          bundle.id,
+        ),
+        stage: active,
+        date: form.date,
+        modelCode: model.code,
+        modelName: model.name,
+        sourceId: bundle.id,
+        variants: bundle.variants,
+        total: bundle.total,
+        status: "Aktif",
+        destination: form.destination,
+        note: form.note,
+        poId: bundle.poId,
+        batchNo: bundle.batchNo,
+        bundleNo: bundle.bundleNo,
+        bundleId: bundle.id,
+        deliveryNoteId,
+      }));
       const variants = mergeVariants(bundles),
         note: Note = {
           id: deliveryNoteId,
@@ -2349,21 +2400,43 @@ export default function Home() {
               (x) => x.sourceId === form.sourceId,
             ).length + 1
           : undefined;
-    const poSequence =
-      (active === "Cutting" ? form.sourceId : cuttingSource?.poId)
-        ?.split("-")
-        .at(-1) ?? "000";
+    const poIdForCode =
+      active === "Cutting" ? form.sourceId : cuttingSource?.poId;
+    const poSequence = poIdForCode?.split("-").at(-1) ?? "000";
+    const poToken = poLotToken(poIdForCode);
+    const monthlyPOCount = (data.records["Order Produksi"] ?? []).filter(
+      (x) =>
+        x.modelCode === model.code &&
+        periodYYMM(x.date) === periodYYMM(form.date),
+    ).length;
+    const recordSource = sourcesForStage(active).find(
+      (x) => x.id === form.sourceId,
+    );
+    const inheritedPOId = tracePOId(recordSource);
+    const inheritedBundleId = traceBundleId(recordSource);
     const recordId =
-      active === "Cutting"
-        ? `CUT-${model.code}-P${poSequence}-B${String(batchNo).padStart(2, "0")}`
-        : active === "Bundle"
-          ? `BDL-${model.code}-P${poSequence}-B${String(batchNo ?? 1).padStart(2, "0")}-${String(bundleNo).padStart(3, "0")}`
-          : code(
-              info.prefix,
-              model.code,
-              (data.records[active] ?? []).length,
-              form.date,
-            );
+      active === "Order Produksi"
+        ? `PO-${model.code}-${periodYYMM(form.date)}-${String(monthlyPOCount + 1).padStart(3, "0")}`
+        : active === "Cutting"
+          ? `CUT-${model.code}-${poToken || `P${poSequence}`}-C${String(batchNo).padStart(2, "0")}`
+          : active === "Bundle"
+            ? `BDL-${model.code}-${poToken || `P${poSequence}`}-C${String(batchNo ?? 1).padStart(2, "0")}-B${String(bundleNo).padStart(3, "0")}`
+            : nextLotCode(
+                active,
+                info.prefix,
+                model.code,
+                inheritedPOId,
+                inheritedBundleId,
+                active === "Penerimaan Gudang"
+                  ? "S"
+                  : active === "Pengiriman QC" || active === "Quality Control"
+                    ? "Q"
+                    : active === "Rework" ||
+                        active === "Penerimaan Rework" ||
+                        active === "QC Ulang"
+                      ? "R"
+                      : "",
+              );
     const qcPassed = qcDetails.reduce((n, x) => n + x.passed, 0),
       qcReject = qcDetails.reduce((n, x) => n + x.reject, 0),
       qcRepair = qcDetails.reduce((n, x) => n + x.repair, 0);
@@ -2374,9 +2447,6 @@ export default function Home() {
           )
         : undefined;
     const receiptVendor = vendorForShipment(receiptShipment);
-    const recordSource = sourcesForStage(active).find(
-      (x) => x.id === form.sourceId,
-    );
     const directVendorQC =
       active === "Penerimaan Gudang" && receiptVendor?.qcMode === "vendor";
     const record: RecordRow = {
@@ -2431,6 +2501,7 @@ export default function Home() {
             : (receiptShipment?.poId ?? tracePOId(recordSource)),
       batchNo,
       bundleNo: active === "Bundle" ? bundleNo : receiptShipment?.bundleNo,
+      bundleId: active === "Bundle" ? recordId : inheritedBundleId,
       deliveryNoteId: receiptShipment?.deliveryNoteId,
     };
     let records = {
@@ -2438,11 +2509,13 @@ export default function Home() {
       [active]: [...(data.records[active] ?? []), record],
     };
     if (directVendorQC) {
-      const qcId = code(
+      const qcId = nextLotCode(
+        "Quality Control",
         "QC",
         model.code,
-        (records["Quality Control"] ?? []).length,
-        form.date,
+        record.poId,
+        record.bundleId,
+        "Q",
       );
       const qcRecord: RecordRow = {
         ...record,
@@ -2483,7 +2556,7 @@ export default function Home() {
             ? reworkShipment?.destination || fromDefault
             : fromDefault;
       const note: Note = {
-        id: `SJ-${form.date.replaceAll("-", "")}-${model.code}-${info.prefix}-${String(notes.length + 1).padStart(3, "0")}`,
+        id: `SJ-${form.date.replaceAll("-", "").slice(2)}-${model.code}-${info.prefix}-${String(notes.length + 1).padStart(3, "0")}`,
         date: form.date,
         process: info.move,
         sourceId: record.id,
@@ -2496,6 +2569,7 @@ export default function Home() {
         officer: form.officer || "Admin",
         recipient: form.recipient,
         note: form.note,
+        bundleIds: record.bundleId ? [record.bundleId] : undefined,
       };
       const directSummary = directVendorQC
         ? `QC ${receiptVendor?.qcOfficer}: lolos ${qcPassed}, repair ${qcRepair}, reject ${qcReject}.`
@@ -2518,19 +2592,23 @@ export default function Home() {
     ...(data.records["QC Ulang"] ?? []),
   ];
   const rejectRows = qcOutcomeSources
-    .map((q) => {
+    .map((q, index) => {
       const variants = (q.qcDetails ?? [])
         .map((x) => ({ color: x.color, size: x.size, qty: x.reject }))
         .filter((x) => x.qty > 0);
       return {
         ...q,
-        id: `RJT-${q.id}`,
+        id:
+          tracePOId(q) && traceBundleId(q)
+            ? `RJT-${q.modelCode}-${poLotToken(tracePOId(q))}-${shortBundleCode(traceBundleId(q))}-${String(index + 1).padStart(2, "0")}`
+            : `RJT-${q.id}`,
         stage: "Karantina Reject",
         sourceId: q.id,
         variants,
         total: sum(variants),
         status: "Karantina",
         poId: tracePOId(q),
+        bundleId: traceBundleId(q),
       };
     })
     .filter((x) => x.total > 0);
@@ -3275,9 +3353,11 @@ export default function Home() {
                           onChange={() => toggleShipmentBundle(bundle.id)}
                         />
                         <span>
-                          <b>{bundle.id}</b>
+                          <b>Bundle {shortBundleCode(bundle.id)}</b>
                           <small>
-                            PO {bundle.poId || "—"} · Batch{" "}
+                            {bundle.id}
+                            <br />
+                            PO {bundle.poId || "—"} · Cutting C
                             {String(bundle.batchNo ?? 1).padStart(2, "0")}
                           </small>
                         </span>
@@ -4774,6 +4854,9 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
                             : "PO produksi"}
                           {row.destination ? ` · ${row.destination}` : ""}
                         </span>
+                        {row.bundleId && (
+                          <span>Bundle {shortBundleCode(row.bundleId)}</span>
+                        )}
                       </div>
                       <b>
                         {row.total}
@@ -5526,6 +5609,9 @@ function StagePage({
                     <td>
                       <b>{r.modelName}</b>
                       <small>{r.modelCode}</small>
+                      {r.bundleId && (
+                        <small>Bundle {shortBundleCode(r.bundleId)}</small>
+                      )}
                     </td>
                     <td>
                       <small>
@@ -5685,6 +5771,11 @@ function NoteTable({
               <td>{n.sourceId}</td>
               <td>
                 <b>{n.modelName}</b>
+                {n.bundleIds?.length ? (
+                  <small>
+                    Bundle: {n.bundleIds.map(shortBundleCode).join(", ")}
+                  </small>
+                ) : null}
                 <small>
                   {n.variants
                     .map((v) => `${v.color} ${v.size}: ${v.qty}`)
@@ -5789,6 +5880,10 @@ function PrintNote({ note, close }: { note: Note; close: () => void }) {
             <div>
               <span>Dokumen sumber</span>
               <b>{note.sourceId}</b>
+            </div>
+            <div>
+              <span>Bundle / Lot</span>
+              <b>{note.bundleIds?.map(shortBundleCode).join(", ") || "—"}</b>
             </div>
             <div>
               <span>Model</span>

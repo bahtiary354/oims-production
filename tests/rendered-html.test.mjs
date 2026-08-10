@@ -95,10 +95,15 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Pilih bundle dalam surat jalan ini/);
   assert.match(page, /bundleIds:\s*bundles\.map/);
   assert.match(page, /deliveryNoteId/);
-  assert.match(page, /BDL-\$\{model\.code\}-P/);
+  assert.match(page, /BDL-\$\{model\.code\}-\$\{poToken/);
   assert.match(css, /\.shipment-bundle-picker/);
   assert.match(page, /remainingAtPO/);
-  assert.match(page, /CUT-\$\{model\.code\}-P/);
+  assert.match(page, /CUT-\$\{model\.code\}-\$\{poToken/);
+  assert.match(page, /PO-\$\{model\.code\}-\$\{periodYYMM/);
+  assert.match(page, /KRM.*nextLotCode|nextLotCode\("Pengiriman Vendor", "KRM"/s);
+  assert.match(page, /function traceBundleId/);
+  assert.match(page, /Bundle \/ Lot/);
+  assert.match(page, /bundleId: active === "Bundle" \? recordId/);
   assert.match(page, /Potong seluruh sisa PO/);
   assert.match(page, /PO masih memiliki sisa Cutting/);
   assert.match(page, /PIC \/ Penanggung jawab/);
@@ -123,6 +128,8 @@ test("persistent state is normalized without destructive reads and masters remai
   assert.match(route, /pics: \[\]/);
   assert.match(route, /Array\.isArray\(saved\.pics\)/);
   assert.match(route, /resolvePO/);
+  assert.match(route, /resolveBundle/);
+  assert.match(route, /bundleId: resolveBundle/);
   assert.match(route, /records: \{\}/);
   assert.match(route, /notes: \[\]/);
   assert.match(route, /normalizeState/);

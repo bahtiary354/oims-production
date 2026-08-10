@@ -37,12 +37,25 @@ function normalizeState(saved: Record<string, unknown>) {
     const parent = byId.get(sourceId);
     return parent ? resolvePO(parent, seen) : undefined;
   };
+  const resolveBundle = (
+    row: Record<string, unknown>,
+    seen = new Set<string>(),
+  ): string | undefined => {
+    if (typeof row.bundleId === "string" && row.bundleId) return row.bundleId;
+    if (row.stage === "Bundle" && typeof row.id === "string") return row.id;
+    const sourceId = typeof row.sourceId === "string" ? row.sourceId : "";
+    if (!sourceId || seen.has(sourceId)) return undefined;
+    seen.add(sourceId);
+    const parent = byId.get(sourceId);
+    return parent ? resolveBundle(parent, seen) : undefined;
+  };
   const records = Object.fromEntries(
     Object.entries(rawRecords).map(([stage, items]) => [
       stage,
       (Array.isArray(items) ? items : []).map((item) => ({
         ...item,
         poId: resolvePO({ ...item, stage }) ?? item.poId,
+        bundleId: resolveBundle({ ...item, stage }) ?? item.bundleId,
       })),
     ]),
   );
