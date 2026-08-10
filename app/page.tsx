@@ -17,12 +17,17 @@ const nav = [
   ["▦", "Dashboard"],
   ["♙", "Master Jaket"],
   ["⌂", "Master Vendor"],
+  ["◎", "Master QC"],
+  ["♙", "Master PIC"],
   ["◇", "Order Produksi"],
   ["✂", "Cutting"],
   ["▱", "Bundle"],
   ["↗", "Pengiriman Vendor"],
   ["□", "Penerimaan Gudang"],
+  ["⇢", "Pengiriman QC"],
   ["✓", "Quality Control"],
+  ["↻", "Rework"],
+  ["▣", "Stok Barang Jadi"],
   ["▥", "Laporan"],
   ["▤", "Surat Jalan"],
 ];
@@ -123,6 +128,13 @@ type QCLocation = {
   address: string;
   active: boolean;
 };
+type PIC = {
+  code: string;
+  name: string;
+  role: string;
+  phone: string;
+  active: boolean;
+};
 type Variant = { color: string; size: string; qty: number };
 type QCDetail = {
   color: string;
@@ -179,6 +191,7 @@ type AppData = {
   models: Model[];
   vendors: Vendor[];
   qcLocations: QCLocation[];
+  pics: PIC[];
   records: Record<string, RecordRow[]>;
   notes: Note[];
 };
@@ -188,6 +201,7 @@ const initial: AppData = {
   models: [],
   vendors: [],
   qcLocations: [],
+  pics: [],
   records: {},
   notes: [],
 };
@@ -1383,7 +1397,7 @@ export default function Home() {
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<
-    null | "master" | "vendor" | "qcLocation" | "record"
+    null | "master" | "vendor" | "qcLocation" | "pic" | "record"
   >(null);
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [modelCodeTouched, setModelCodeTouched] = useState(false);
@@ -1393,6 +1407,7 @@ export default function Home() {
   const [editingQCLocationCode, setEditingQCLocationCode] = useState<
     string | null
   >(null);
+  const [editingPICCode, setEditingPICCode] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [vendorForm, setVendorForm] = useState({
     name: "",
@@ -1408,6 +1423,11 @@ export default function Home() {
     recipient: "",
     phone: "",
     address: "",
+  });
+  const [picForm, setPicForm] = useState({
+    name: "",
+    role: "",
+    phone: "",
   });
   const [matrix, setMatrix] = useState<Variant[]>([]);
   const [qcDetails, setQcDetails] = useState<QCDetail[]>([]);
@@ -1426,6 +1446,7 @@ export default function Home() {
           models: x.models ?? [],
           vendors: x.vendors ?? [],
           qcLocations: x.qcLocations ?? [],
+          pics: x.pics ?? [],
         }),
       )
       .catch(() => setData(initial))
@@ -1621,7 +1642,7 @@ export default function Home() {
         active === "Pengiriman QC" ? (firstQCLocation?.location ?? "") : vendor,
       recipient:
         active === "Pengiriman QC" ? (firstQCLocation?.recipient ?? "") : "",
-      officer: "",
+      officer: data.pics.find((x) => x.active)?.name ?? "",
       qcPassed: active === "Quality Control" ? (first?.total ?? 0) : 0,
     });
     const available = first
@@ -1931,6 +1952,45 @@ export default function Home() {
     setEditingQCLocationCode(null);
     flash(`${item.location} berhasil disimpan.`);
   }
+  async function addPIC(e: FormEvent) {
+    e.preventDefault();
+    const name = picForm.name.trim();
+    if (
+      data.pics.some(
+        (x) =>
+          x.code !== editingPICCode &&
+          x.name.toLowerCase() === name.toLowerCase(),
+      )
+    ) {
+      flash("Nama PIC sudah digunakan.");
+      return;
+    }
+    const item: PIC = {
+      code:
+        editingPICCode ??
+        `PIC-${String(data.pics.length + 1).padStart(3, "0")}`,
+      name,
+      role: picForm.role.trim(),
+      phone: picForm.phone.trim(),
+      active: true,
+    };
+    const old = data.pics.find((x) => x.code === editingPICCode);
+    await persist({
+      ...data,
+      notes:
+        old && old.name !== item.name
+          ? data.notes.map((x) =>
+              x.officer === old.name ? { ...x, officer: item.name } : x,
+            )
+          : data.notes,
+      pics: editingPICCode
+        ? data.pics.map((x) => (x.code === editingPICCode ? item : x))
+        : [...data.pics, item],
+    });
+    setModal(null);
+    setEditingPICCode(null);
+    flash(`${item.name} berhasil disimpan sebagai PIC.`);
+  }
   async function deleteModel(item: Model) {
     if (!window.confirm(`Hapus master jaket ${item.name}?`)) return;
     await persist({
@@ -1960,6 +2020,23 @@ export default function Home() {
       qcLocations: data.qcLocations.filter((x) => x.code !== item.code),
     });
     flash(`${item.location} dihapus.`);
+  }
+  async function deletePIC(item: PIC) {
+    if (
+      data.notes.some((x) => x.officer === item.name) ||
+      Object.values(data.records)
+        .flat()
+        .some((x) => x.qcOfficer === item.name)
+    ) {
+      flash("PIC sudah digunakan dalam transaksi dan tidak dapat dihapus.");
+      return;
+    }
+    if (!window.confirm(`Hapus PIC ${item.name}?`)) return;
+    await persist({
+      ...data,
+      pics: data.pics.filter((x) => x.code !== item.code),
+    });
+    flash(`${item.name} dihapus.`);
   }
   async function addRecord(e: FormEvent) {
     e.preventDefault();
@@ -2499,69 +2576,87 @@ export default function Home() {
                 />
               )}
               {active === "Master Vendor" && (
-                <>
-                  <VendorMaster
-                    vendors={data.vendors}
-                    qcLocations={data.qcLocations}
-                    onAdd={() => {
-                      setEditingVendorCode(null);
-                      setVendorForm({
-                        name: "",
-                        contact: "",
-                        phone: "",
-                        address: "",
-                        qcMode: "internal",
-                        qcOfficer: "",
-                        qcLocationCode:
-                          data.qcLocations.find((x) => x.active)?.code ?? "",
-                      });
-                      setModal("vendor");
-                    }}
-                    onEdit={(v) => {
-                      setEditingVendorCode(v.code);
-                      setVendorForm({
-                        name: v.name,
-                        contact: v.contact,
-                        phone: v.phone,
-                        address: v.address,
-                        qcMode: v.qcMode ?? "internal",
-                        qcOfficer: v.qcOfficer ?? "",
-                        qcLocationCode:
-                          v.qcLocationCode ??
-                          data.qcLocations.find((x) => x.active)?.code ??
-                          "",
-                      });
-                      setModal("vendor");
-                    }}
-                    onDelete={deleteVendor}
-                  />
-                  <section className="embedded-qc-master">
-                    <QCLocationMaster
-                      items={data.qcLocations}
-                      onAdd={() => {
-                        setEditingQCLocationCode(null);
-                        setQcLocationForm({
-                          location: "",
-                          recipient: "",
-                          phone: "",
-                          address: "",
-                        });
-                        setModal("qcLocation");
-                      }}
-                      onEdit={(x) => {
-                        setEditingQCLocationCode(x.code);
-                        setQcLocationForm({
-                          location: x.location,
-                          recipient: x.recipient,
-                          phone: x.phone,
-                          address: x.address,
-                        });
-                        setModal("qcLocation");
-                      }}
-                      onDelete={deleteQCLocation}
-                    />
-                  </section>
-                </>
+                <VendorMaster
+                  vendors={data.vendors}
+                  qcLocations={data.qcLocations}
+                  onAdd={() => {
+                    setEditingVendorCode(null);
+                    setVendorForm({
+                      name: "",
+                      contact: "",
+                      phone: "",
+                      address: "",
+                      qcMode: "internal",
+                      qcOfficer: "",
+                      qcLocationCode:
+                        data.qcLocations.find((x) => x.active)?.code ?? "",
+                    });
+                    setModal("vendor");
+                  }}
+                  onEdit={(v) => {
+                    setEditingVendorCode(v.code);
+                    setVendorForm({
+                      name: v.name,
+                      contact: v.contact,
+                      phone: v.phone,
+                      address: v.address,
+                      qcMode: v.qcMode ?? "internal",
+                      qcOfficer: v.qcOfficer ?? "",
+                      qcLocationCode:
+                        v.qcLocationCode ??
+                        data.qcLocations.find((x) => x.active)?.code ??
+                        "",
+                    });
+                    setModal("vendor");
+                  }}
+                  onDelete={deleteVendor}
+                />
+              )}
+              {active === "Master QC" && (
+                <QCLocationMaster
+                  items={data.qcLocations}
+                  onAdd={() => {
+                    setEditingQCLocationCode(null);
+                    setQcLocationForm({
+                      location: "",
+                      recipient: "",
+                      phone: "",
+                      address: "",
+                    });
+                    setModal("qcLocation");
+                  }}
+                  onEdit={(x) => {
+                    setEditingQCLocationCode(x.code);
+                    setQcLocationForm({
+                      location: x.location,
+                      recipient: x.recipient,
+                      phone: x.phone,
+                      address: x.address,
+                    });
+                    setModal("qcLocation");
+                  }}
+                  onDelete={deleteQCLocation}
+                />
+              )}
+              {active === "Master PIC" && (
+                <PICMaster
+                  items={data.pics}
+                  onAdd={() => {
+                    setEditingPICCode(null);
+                    setPicForm({ name: "", role: "", phone: "" });
+                    setModal("pic");
+                  }}
+                  onEdit={(item) => {
+                    setEditingPICCode(item.code);
+                    setPicForm({
+                      name: item.name,
+                      role: item.role,
+                      phone: item.phone,
+                    });
+                    setModal("pic");
+                  }}
+                  onDelete={deletePIC}
+                />
               )}
               {stages.includes(active) && (
                 <div
@@ -3022,15 +3117,29 @@ export default function Home() {
                     </label>
                   )}
                   <label>
-                    Petugas
-                    <input
+                    PIC / Penanggung jawab
+                    <select
                       required
-                      placeholder="Nama petugas"
                       value={form.officer}
                       onChange={(e) =>
                         setForm({ ...form, officer: e.target.value })
                       }
-                    />
+                    >
+                      <option value="">Pilih PIC</option>
+                      {data.pics
+                        .filter((x) => x.active)
+                        .map((x) => (
+                          <option key={x.code} value={x.name}>
+                            {x.code} — {x.name}
+                            {x.role ? ` · ${x.role}` : ""}
+                          </option>
+                        ))}
+                    </select>
+                    {data.pics.length === 0 && (
+                      <small>
+                        Buat PIC terlebih dahulu melalui menu Master PIC.
+                      </small>
+                    )}
                   </label>
                 </>
               )}
@@ -3288,6 +3397,64 @@ export default function Home() {
                   ? "Simpan & buat surat jalan"
                   : "Simpan proses"}
               </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {modal === "pic" && (
+        <div className="overlay">
+          <form className="form-modal" onSubmit={addPIC}>
+            <button
+              className="close"
+              type="button"
+              onClick={() => {
+                setModal(null);
+                setEditingPICCode(null);
+              }}
+            >
+              ×
+            </button>
+            <p className="overline">MASTER DATA</p>
+            <h2>{editingPICCode ? "Edit PIC" : "Tambah PIC"}</h2>
+            <div className="field-grid">
+              <label>
+                Nama PIC
+                <input
+                  required
+                  placeholder="Nama penanggung jawab"
+                  value={picForm.name}
+                  onChange={(e) =>
+                    setPicForm({ ...picForm, name: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Jabatan / tugas
+                <input
+                  placeholder="Contoh: PIC Produksi"
+                  value={picForm.role}
+                  onChange={(e) =>
+                    setPicForm({ ...picForm, role: e.target.value })
+                  }
+                />
+              </label>
+              <label className="full">
+                Nomor telepon
+                <input
+                  placeholder="08..."
+                  value={picForm.phone}
+                  onChange={(e) =>
+                    setPicForm({ ...picForm, phone: e.target.value })
+                  }
+                />
+              </label>
+            </div>
+            <div className="form-actions">
+              <button type="button" onClick={() => setModal(null)}>
+                Batal
+              </button>
+              <button className="primary">Simpan PIC</button>
             </div>
           </form>
         </div>
@@ -4447,6 +4614,68 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
     </div>
   );
 }
+function PICMaster({
+  items,
+  onAdd,
+  onEdit,
+  onDelete,
+}: {
+  items: PIC[];
+  onAdd: () => void;
+  onEdit: (item: PIC) => void;
+  onDelete: (item: PIC) => void;
+}) {
+  return (
+    <>
+      <div className="page-title">
+        <div>
+          <p className="overline">MASTER DATA</p>
+          <h1>PIC / Penanggung Jawab</h1>
+          <span>
+            Dipilih saat perpindahan barang dan dicetak pada surat jalan.
+          </span>
+        </div>
+        <button className="primary" onClick={onAdd}>
+          ＋ Tambah PIC
+        </button>
+      </div>
+      {items.length === 0 ? (
+        <Empty
+          title="Belum ada PIC"
+          text="Tambahkan penanggung jawab agar proses pengiriman tidak perlu mengetik nama manual."
+        />
+      ) : (
+        <div className="model-grid">
+          {items.map((item) => (
+            <article key={item.code}>
+              <div>
+                <span>{item.code}</span>
+                <em>{item.active ? "Aktif" : "Nonaktif"}</em>
+              </div>
+              <h2>{item.name}</h2>
+              <small>JABATAN / TUGAS</small>
+              <p>
+                <b>{item.role || "PIC Produksi"}</b>
+              </p>
+              <small>KONTAK</small>
+              <p>{item.phone || "Belum diisi"}</p>
+              <footer>
+                <span>Penanggung jawab transaksi</span>
+                <div className="master-actions">
+                  <button onClick={() => onEdit(item)}>✎ Edit</button>
+                  <button className="danger" onClick={() => onDelete(item)}>
+                    ♲ Hapus
+                  </button>
+                </div>
+              </footer>
+            </article>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function Master({
   data,
   onAdd,

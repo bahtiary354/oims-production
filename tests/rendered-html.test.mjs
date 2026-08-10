@@ -58,8 +58,11 @@ test("production app has correct metadata and connected workflow", async () => {
   );
   const navBlock = page.match(/const nav = \[[\s\S]*?\n\];/)?.[0];
   assert.ok(navBlock, "primary navigation should be defined");
-  assert.doesNotMatch(navBlock, /Pengiriman QC|Rework|Stok Barang Jadi/);
-  assert.doesNotMatch(navBlock, /Master Tujuan QC/);
+  assert.match(navBlock, /Master QC/);
+  assert.match(navBlock, /Master PIC/);
+  assert.match(navBlock, /Pengiriman QC/);
+  assert.match(navBlock, /Rework/);
+  assert.match(navBlock, /Stok Barang Jadi/);
   assert.match(page, /Pekerjaan berikutnya/);
   assert.match(page, /PO menunggu Cutting/);
   assert.match(page, /Isi seluruh sisa setoran/);
@@ -94,6 +97,9 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /CUT-\$\{model\.code\}-P/);
   assert.match(page, /Potong seluruh sisa PO/);
   assert.match(page, /PO masih memiliki sisa Cutting/);
+  assert.match(page, /PIC \/ Penanggung jawab/);
+  assert.match(page, /Pilih PIC/);
+  assert.match(page, /deletePIC/);
   assert.doesNotMatch(
     page,
     /PO ini sudah dibukukan di Cutting\. Gunakan PO baru/,
@@ -110,16 +116,19 @@ test("persistent state is normalized without destructive reads and masters remai
   assert.match(route, /models: \[\]/);
   assert.match(route, /vendors: \[\]/);
   assert.match(route, /qcLocations: \[\]/);
+  assert.match(route, /pics: \[\]/);
+  assert.match(route, /Array\.isArray\(saved\.pics\)/);
   assert.match(route, /records: \{\}/);
   assert.match(route, /notes: \[\]/);
   assert.match(route, /normalizeState/);
   assert.doesNotMatch(route, /saved\.dataVersion !== 3/);
-  assert.match(route, /id: 2, payload: current\.payload/);
+  assert.match(route, /id:\s*2,\s*payload:\s*current\.payload/);
   assert.match(route, /state saved with backup/);
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   assert.match(page, /deleteModel/);
   assert.match(page, /deleteVendor/);
   assert.match(page, /deleteQCLocation/);
+  assert.match(page, /deletePIC/);
   assert.match(route, /from\("app_state"\)/);
   assert.match(database, /createClient/);
   assert.match(database, /SUPABASE_SERVICE_ROLE_KEY/);
