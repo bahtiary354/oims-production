@@ -42,16 +42,16 @@ test("production app has correct metadata and connected workflow", async () => {
   const css = await readFile(new URL("app/globals.css", root), "utf8");
   assert.match(
     css,
-    /\.print-detail-table th,\.print-detail-table td\{font-size:14px/,
+    /\.print-detail-table th,\s*\.print-detail-table td\s*\{\s*font-size:\s*14px/,
   );
-  assert.match(css, /\.print-head h1\{font-size:22px/);
+  assert.match(css, /\.print-head h1\s*\{\s*font-size:\s*22px/);
   assert.doesNotMatch(page, /className="mobile-bottom-nav"/);
   assert.match(page, /aria-label="Buka semua menu"/);
   assert.match(css, /\.app-side\.mobile-open/);
-  assert.match(css, /\.overlay\{z-index:120;padding:10px\}/);
-  assert.match(css, /\.page-title \.overline,\.page-title h1\{display:none\}/);
+  assert.match(css, /\.overlay\s*\{[\s\S]*?z-index:\s*120;[\s\S]*?padding:\s*10px/);
+  assert.match(css, /\.page-title \.overline,\s*\.page-title h1\s*\{\s*display:\s*none/);
   assert.doesNotMatch(css, /mobile-bottom-nav/);
-  assert.match(css, /grid-template-columns:repeat\(5,1fr\)/);
+  assert.match(css, /grid-template-columns:\s*repeat\(5,\s*1fr\)/);
   assert.match(
     page,
     /\[\s*"▥",\s*"Laporan"\s*\],\s*\[\s*"▤",\s*"Surat Jalan"\s*\]/,
@@ -67,10 +67,18 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.doesNotMatch(page, /Geser ke samping untuk melihat alur PO/);
   assert.doesNotMatch(page, /ALUR PRODUKSI/);
   assert.match(page, /TAHAP AKTIF/);
+  assert.match(page, /Aktivitas periode/);
+  assert.match(page, /Hanya menyaring aktivitas/);
+  assert.match(page, /Hari ini/);
+  assert.match(page, /Minggu ini/);
+  assert.match(page, /Bulan ini/);
+  assert.match(page, /periodRows\("Pengiriman Vendor"\)/);
+  assert.match(page, /periodRows\("Penerimaan Gudang"\)/);
+  assert.match(page, /periodRows\("Stok Barang Jadi"\)/);
   assert.match(page, /Isi seluruh sisa setoran/);
   assert.match(page, /Lolos semua/);
   assert.match(css, /2026 visual refresh/);
-  assert.match(css, /--green:#2563eb/);
+  assert.match(css, /--green:\s*#2563eb/);
   assert.match(page, /QC Vendor Selesai/);
   assert.match(page, /Lolos · Belum Stok/);
   assert.match(page, /Rework:\s*withBalance/);
@@ -81,8 +89,8 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /className="production-board"/);
   assert.match(page, /Posisi pekerjaan saat ini/);
   assert.match(page, /RINCIAN TAHAP/);
-  assert.match(css, /grid-auto-flow:column/);
-  assert.match(css, /grid-auto-columns:82vw/);
+  assert.match(css, /grid-auto-flow:\s*column/);
+  assert.match(css, /grid-auto-columns:\s*82vw/);
   assert.match(page, /automaticModelCode/);
   assert.match(page, /Kode terkunci karena sudah digunakan dalam PO/);
   assert.match(

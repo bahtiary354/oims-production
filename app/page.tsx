@@ -4472,6 +4472,12 @@ function LegacyDashboard({
 
 function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
   const [breakdown, setBreakdown] = useState<string | null>(null),
+    [period, setPeriod] = useState<"today" | "week" | "month" | "custom">(
+      "month",
+    ),
+    today = new Date().toISOString().slice(0, 10),
+    [customStart, setCustomStart] = useState(`${today.slice(0, 8)}01`),
+    [customEnd, setCustomEnd] = useState(today),
     records = data.records;
   const children = (stage: string, id: string) =>
     (records[stage] ?? []).filter((x) => x.sourceId === id);
@@ -4583,6 +4589,53 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
     ).length,
     selected = breakdown ? (positions[breakdown] ?? []) : [],
     issues = reconcileData(data);
+  const todayDate = new Date(`${today}T12:00:00`),
+    weekStartDate = new Date(todayDate);
+  weekStartDate.setDate(todayDate.getDate() - ((todayDate.getDay() + 6) % 7));
+  const weekStart = weekStartDate.toISOString().slice(0, 10),
+    rangeStart =
+      period === "today"
+        ? today
+        : period === "week"
+          ? weekStart
+          : period === "month"
+            ? `${today.slice(0, 8)}01`
+            : customStart,
+    rangeEnd = period === "custom" ? customEnd : today,
+    inRange = (row: RecordRow) =>
+      row.date >= rangeStart && row.date <= rangeEnd,
+    periodRows = (stage: string) => (records[stage] ?? []).filter(inRange),
+    qcActivity = [...periodRows("Quality Control"), ...periodRows("QC Ulang")],
+    activity = [
+      {
+        label: "Dikirim Vendor",
+        value: periodRows("Pengiriman Vendor").reduce((n, x) => n + x.total, 0),
+      },
+      {
+        label: "Setoran Gudang",
+        value: periodRows("Penerimaan Gudang").reduce((n, x) => n + x.total, 0),
+      },
+      {
+        label: "Diperiksa QC",
+        value: qcActivity.reduce((n, x) => n + x.total, 0),
+      },
+      {
+        label: "Lolos QC",
+        value: qcActivity.reduce((n, x) => n + (x.qcPassed ?? 0), 0),
+      },
+      {
+        label: "Repair",
+        value: qcActivity.reduce((n, x) => n + (x.qcRepair ?? 0), 0),
+      },
+      {
+        label: "Reject",
+        value: qcActivity.reduce((n, x) => n + (x.qcReject ?? 0), 0),
+      },
+      {
+        label: "Masuk Stok",
+        value: periodRows("Stok Barang Jadi").reduce((n, x) => n + x.total, 0),
+      },
+    ];
   return (
     <div className="owner-simple">
       <div className="owner-health">
@@ -4608,6 +4661,66 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
             : "✓ Data sinkron"}
         </span>
       </div>
+      <section className="owner-activity">
+        <header>
+          <div>
+            <h2>Aktivitas periode</h2>
+            <span>
+              Hanya menyaring aktivitas · posisi barang tetap saldo sebenarnya
+            </span>
+          </div>
+          <div className="period-switch" aria-label="Pilih rentang waktu">
+            {[
+              ["today", "Hari ini"],
+              ["week", "Minggu ini"],
+              ["month", "Bulan ini"],
+              ["custom", "Custom"],
+            ].map(([value, label]) => (
+              <button
+                type="button"
+                className={period === value ? "active" : ""}
+                key={value}
+                onClick={() =>
+                  setPeriod(value as "today" | "week" | "month" | "custom")
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </header>
+        {period === "custom" && (
+          <div className="period-dates">
+            <label>
+              Dari
+              <input
+                type="date"
+                value={customStart}
+                max={customEnd}
+                onChange={(e) => setCustomStart(e.target.value)}
+              />
+            </label>
+            <label>
+              Sampai
+              <input
+                type="date"
+                value={customEnd}
+                min={customStart}
+                onChange={(e) => setCustomEnd(e.target.value)}
+              />
+            </label>
+          </div>
+        )}
+        <div className="activity-strip">
+          {activity.map((item) => (
+            <article key={item.label}>
+              <span>{item.label}</span>
+              <b>{item.value}</b>
+              <small>unit</small>
+            </article>
+          ))}
+        </div>
+      </section>
       <section className="production-board-panel">
         <header>
           <div>
