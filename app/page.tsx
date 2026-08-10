@@ -26,13 +26,6 @@ const nav = [
   ["▥", "Laporan"],
   ["▤", "Surat Jalan"],
 ];
-const mobileQuickNav = [
-  ["▦", "Dashboard", "Beranda"],
-  ["◇", "Order Produksi", "PO"],
-  ["↗", "Pengiriman Vendor", "Vendor"],
-  ["□", "Penerimaan Gudang", "Gudang"],
-  ["✓", "Quality Control", "QC"],
-];
 const stageInfo: Record<
   string,
   {
@@ -3378,21 +3371,6 @@ export default function Home() {
         </div>
       )}
       {print && <PrintNote note={print} close={() => setPrint(null)} />}
-      <nav className="mobile-bottom-nav" aria-label="Akses cepat">
-        {mobileQuickNav.map(([icon, name, label]) => (
-          <button
-            key={name}
-            className={active === name ? "active" : ""}
-            onClick={() => {
-              setActive(name);
-              setMobileMenu(false);
-            }}
-          >
-            <i>{icon}</i>
-            <span>{label}</span>
-          </button>
-        ))}
-      </nav>
       {toast && <div className="toast">✓ {toast}</div>}
     </main>
   );

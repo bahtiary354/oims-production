@@ -45,10 +45,12 @@ test("production app has correct metadata and connected workflow", async () => {
     /\.print-detail-table th,\.print-detail-table td\{font-size:14px/,
   );
   assert.match(css, /\.print-head h1\{font-size:22px/);
-  assert.match(page, /className="mobile-bottom-nav"/);
+  assert.doesNotMatch(page, /className="mobile-bottom-nav"/);
   assert.match(page, /aria-label="Buka semua menu"/);
   assert.match(css, /\.app-side\.mobile-open/);
   assert.match(css, /\.overlay\{z-index:120;padding:10px\}/);
+  assert.match(css, /\.page-title \.overline,\.page-title h1\{display:none\}/);
+  assert.doesNotMatch(css, /mobile-bottom-nav/);
   assert.match(css, /grid-template-columns:repeat\(5,1fr\)/);
   assert.match(
     page,
