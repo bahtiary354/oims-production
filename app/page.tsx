@@ -11,6 +11,9 @@ const stages = [
   "Pengiriman QC",
   "Quality Control",
   "Rework",
+  "Penerimaan Rework",
+  "QC Ulang",
+  "Karantina Reject",
   "Stok Barang Jadi",
 ];
 const nav = [
@@ -27,6 +30,9 @@ const nav = [
   ["⇢", "Pengiriman QC"],
   ["✓", "Quality Control"],
   ["↻", "Rework"],
+  ["□", "Penerimaan Rework"],
+  ["✓", "QC Ulang"],
+  ["!", "Karantina Reject"],
   ["▣", "Stok Barang Jadi"],
   ["▥", "Laporan"],
   ["▤", "Surat Jalan"],
@@ -87,10 +93,29 @@ const stageInfo: Record<
   },
   Rework: {
     prefix: "RWK",
-    title: "Rework / Repair",
-    desc: "Barang repair dikirim dan kembali untuk QC ulang.",
+    title: "Pengiriman Rework / Repair",
+    desc: "Hanya barang repair yang dikirim untuk diperbaiki.",
     source: "Quality Control",
-    move: "Quality Control → Rework",
+    move: "Quality Control → Vendor Rework",
+  },
+  "Penerimaan Rework": {
+    prefix: "TRW",
+    title: "Penerimaan Hasil Rework",
+    desc: "Terima hasil perbaikan vendor sebelum dilakukan QC ulang.",
+    source: "Rework",
+    move: "Vendor Rework → Quality Control",
+  },
+  "QC Ulang": {
+    prefix: "QCR",
+    title: "Quality Control Ulang",
+    desc: "Periksa kembali barang yang selesai diperbaiki.",
+    source: "Penerimaan Rework",
+  },
+  "Karantina Reject": {
+    prefix: "RJT",
+    title: "Karantina Reject",
+    desc: "Barang gagal QC dipisahkan dari repair dan stok jadi.",
+    source: "Quality Control",
   },
   "Stok Barang Jadi": {
     prefix: "STK",
@@ -281,13 +306,10 @@ function ReworkSummary({
 }) {
   const done = new Set(rows.map((x) => x.sourceId));
   const waiting = qcRows.filter(
-    (x) =>
-      x.qcDetails &&
-      (x.qcRepair ?? 0) + (x.qcReject ?? 0) > 0 &&
-      !done.has(x.id),
+    (x) => x.qcDetails && (x.qcRepair ?? 0) > 0 && !done.has(x.id),
   );
   const repair = waiting.reduce((n, x) => n + (x.qcRepair ?? 0), 0),
-    reject = waiting.reduce((n, x) => n + (x.qcReject ?? 0), 0);
+    reject = qcRows.reduce((n, x) => n + (x.qcReject ?? 0), 0);
   return (
     <>
       <div className="rework-kpis">
@@ -302,7 +324,7 @@ function ReworkSummary({
           <small>unit</small>
         </article>
         <article className="reject">
-          <span>REJECT / RUSAK</span>
+          <span>REJECT · DIPISAH KE KARANTINA</span>
           <b>{reject}</b>
           <small>unit</small>
         </article>
@@ -323,15 +345,13 @@ function ReworkSummary({
               </header>
               <div>
                 {q.qcDetails
-                  ?.filter((x) => x.repair + x.reject > 0)
+                  ?.filter((x) => x.repair > 0)
                   .map((x) => (
                     <p key={`${x.color}-${x.size}`}>
                       <b>
                         {x.color} · {x.size}
                       </b>
-                      <span>
-                        Repair {x.repair} · Reject {x.reject}
-                      </span>
+                      <span>Repair {x.repair}</span>
                       <small>{x.note || "Tanpa catatan"}</small>
                     </p>
                   ))}
@@ -1291,32 +1311,33 @@ function LiveStageStatus({
       return children("Quality Control", r.id).length
         ? { label: "Selesai Diperiksa QC", tone: "done", done: true }
         : { label: "Menunggu Pemeriksaan QC", tone: "waiting", done: false };
-    if (active === "Quality Control") {
-      const defects = (r.qcRepair ?? 0) + (r.qcReject ?? 0),
-        reworked = children("Rework", r.id).length > 0,
-        stocked = children("Stok Barang Jadi", r.id).length > 0;
-      if (defects === 0)
-        return stocked
-          ? { label: "Lolos QC · Masuk Stok", tone: "done", done: true }
-          : { label: "Lolos QC · Menunggu Stok", tone: "waiting", done: false };
-      return reworked
-        ? {
-            label: "Repair / Reject Dikirim ke Rework",
-            tone: "done",
-            done: true,
-          }
+    if (active === "Quality Control" || active === "QC Ulang") {
+      const hasPassed = (r.qcPassed ?? 0) > 0,
+        hasRepair = (r.qcRepair ?? 0) > 0,
+        hasReject = (r.qcReject ?? 0) > 0,
+        reworked = !hasRepair || children("Rework", r.id).length > 0,
+        stocked = !hasPassed || children("Stok Barang Jadi", r.id).length > 0,
+        done = reworked && stocked;
+      return {
+        label: done
+          ? `Hasil ditindaklanjuti${hasReject ? " · Reject dikarantina" : ""}`
+          : "Menunggu tindak lanjut hasil QC",
+        tone: done ? "done" : "partial",
+        done,
+      };
+    }
+    if (active === "Rework")
+      return children("Penerimaan Rework", r.id).length
+        ? { label: "Hasil Rework diterima", tone: "done", done: true }
         : {
-            label: "Menunggu Tindak Lanjut Rework",
+            label: "Sedang diperbaiki vendor",
             tone: "partial",
             done: false,
           };
-    }
-    if (active === "Rework")
-      return {
-        label: "Dikirim ke Rework · Menunggu Hasil Perbaikan",
-        tone: "partial",
-        done: false,
-      };
+    if (active === "Penerimaan Rework")
+      return children("QC Ulang", r.id).length
+        ? { label: "Selesai QC ulang", tone: "done", done: true }
+        : { label: "Menunggu QC ulang", tone: "waiting", done: false };
     return { label: "Masuk Stok Barang Jadi", tone: "done", done: true };
   };
   const items = rows.map((row) => ({ row, ...statusFor(row) })),
@@ -1559,18 +1580,48 @@ export default function Home() {
       ""
     );
   }
+  function tracePOId(source?: RecordRow): string | undefined {
+    if (!source) return undefined;
+    if (source.poId) return source.poId;
+    if (source.stage === "Order Produksi") return source.id;
+    const parent = Object.values(data.records)
+      .flat()
+      .find((x) => x.id === source.sourceId);
+    return parent ? tracePOId(parent) : undefined;
+  }
+  function traceOriginVendor(source?: RecordRow): string | undefined {
+    if (!source) return undefined;
+    if (source.originVendor) return source.originVendor;
+    if (source.stage === "Pengiriman Vendor") return source.destination;
+    const parent = Object.values(data.records)
+      .flat()
+      .find((x) => x.id === source.sourceId);
+    return parent ? traceOriginVendor(parent) : undefined;
+  }
+  function sourcesForStage(stage: string) {
+    if (["Rework", "Karantina Reject", "Stok Barang Jadi"].includes(stage))
+      return [
+        ...(data.records["Quality Control"] ?? []),
+        ...(data.records["QC Ulang"] ?? []),
+      ];
+    return data.records[stageInfo[stage]?.source ?? ""] ?? [];
+  }
   function routedVariants(stage: string, source: RecordRow) {
     if (stage === "Rework" && source.qcDetails)
       return source.qcDetails
         .map((x) => ({
           color: x.color,
           size: x.size,
-          qty: x.repair + x.reject,
+          qty: x.repair,
         }))
         .filter((x) => x.qty > 0);
     if (stage === "Stok Barang Jadi" && source.qcDetails)
       return source.qcDetails
         .map((x) => ({ color: x.color, size: x.size, qty: x.passed }))
+        .filter((x) => x.qty > 0);
+    if (stage === "Karantina Reject" && source.qcDetails)
+      return source.qcDetails
+        .map((x) => ({ color: x.color, size: x.size, qty: x.reject }))
         .filter((x) => x.qty > 0);
     return source.variants.map((x) => ({ ...x }));
   }
@@ -1601,10 +1652,18 @@ export default function Home() {
       return !(data.records["Quality Control"] ?? []).some(
         (x) => x.sourceId === source.id,
       );
+    if (stage === "Penerimaan Rework")
+      return !(data.records["Penerimaan Rework"] ?? []).some(
+        (x) => x.sourceId === source.id,
+      );
+    if (stage === "QC Ulang")
+      return !(data.records["QC Ulang"] ?? []).some(
+        (x) => x.sourceId === source.id,
+      );
     if (stage === "Rework")
       return (
         !!source.qcDetails &&
-        (source.qcRepair ?? 0) + (source.qcReject ?? 0) > 0 &&
+        (source.qcRepair ?? 0) > 0 &&
         !(data.records.Rework ?? []).some((x) => x.sourceId === source.id)
       );
     if (stage === "Stok Barang Jadi")
@@ -1615,17 +1674,26 @@ export default function Home() {
           (x) => x.sourceId === source.id,
         )
       );
+    if (stage === "Karantina Reject")
+      return (
+        !!source.qcDetails &&
+        (source.qcReject ?? 0) > 0 &&
+        !(data.records["Karantina Reject"] ?? []).some(
+          (x) => x.sourceId === source.id,
+        )
+      );
     return true;
   }
   function openRecord() {
     const model = data.models[0];
     const info = stageInfo[active];
-    const sources = info.source ? (data.records[info.source] ?? []) : [];
+    const sources = info.source ? sourcesForStage(active) : [];
     const first =
       active === "Bundle"
         ? sources.find((x) => sum(remainingFor(x)) > 0)
         : sources.find((x) => sourceAvailable(active, x));
-    const vendor = first && active === "Rework" ? vendorFromQC(first) : "";
+    const vendor =
+      first && active === "Rework" ? (traceOriginVendor(first) ?? "") : "";
     const firstQCLocation =
       active === "Pengiriman QC"
         ? qcLocationForReceipt(first)
@@ -1639,11 +1707,20 @@ export default function Home() {
       code: first?.modelCode ?? model?.code ?? "",
       sourceId: first?.id ?? "",
       destination:
-        active === "Pengiriman QC" ? (firstQCLocation?.location ?? "") : vendor,
+        active === "Pengiriman QC"
+          ? (firstQCLocation?.location ?? "")
+          : active === "Penerimaan Rework"
+            ? "Quality Control"
+            : active === "Stok Barang Jadi"
+              ? "Gudang Barang Jadi"
+              : vendor,
       recipient:
         active === "Pengiriman QC" ? (firstQCLocation?.recipient ?? "") : "",
       officer: data.pics.find((x) => x.active)?.name ?? "",
-      qcPassed: active === "Quality Control" ? (first?.total ?? 0) : 0,
+      qcPassed:
+        active === "Quality Control" || active === "QC Ulang"
+          ? (first?.total ?? 0)
+          : 0,
     });
     const available = first
       ? active === "Cutting"
@@ -1660,7 +1737,7 @@ export default function Home() {
       active === "Penerimaan Gudang" &&
       vendorForShipment(first)?.qcMode === "vendor";
     setQcDetails(
-      active === "Quality Control" || directVendorQC
+      active === "Quality Control" || active === "QC Ulang" || directVendorQC
         ? available.map((x) => ({
             ...x,
             passed: x.qty,
@@ -1679,10 +1756,7 @@ export default function Home() {
     setModal("record");
   }
   function selectSource(id: string) {
-    const sourceStage = stageInfo[active].source;
-    const source = (data.records[sourceStage ?? ""] ?? []).find(
-      (x) => x.id === id,
-    );
+    const source = sourcesForStage(active).find((x) => x.id === id);
     if (active === "Pengiriman Vendor" && source) {
       setSelectedBundleIds([id]);
       setForm({ ...form, sourceId: id, code: source.modelCode });
@@ -1699,16 +1773,22 @@ export default function Home() {
       code: source?.modelCode ?? form.code,
       destination:
         active === "Rework" && source
-          ? vendorFromQC(source)
-          : active === "Pengiriman QC"
-            ? (firstQCLocation?.location ?? "")
-            : form.destination,
+          ? (traceOriginVendor(source) ?? "")
+          : active === "Penerimaan Rework"
+            ? "Quality Control"
+            : active === "Pengiriman QC"
+              ? (firstQCLocation?.location ?? "")
+              : active === "Stok Barang Jadi"
+                ? "Gudang Barang Jadi"
+                : form.destination,
       recipient:
         active === "Pengiriman QC"
           ? (firstQCLocation?.recipient ?? "")
           : form.recipient,
       qcPassed:
-        active === "Quality Control" ? (source?.total ?? 0) : form.qcPassed,
+        active === "Quality Control" || active === "QC Ulang"
+          ? (source?.total ?? 0)
+          : form.qcPassed,
       qcReject: 0,
       qcRepair: 0,
     });
@@ -1730,7 +1810,7 @@ export default function Home() {
         active === "Penerimaan Gudang" &&
         vendorForShipment(source)?.qcMode === "vendor";
       setQcDetails(
-        active === "Quality Control" || directVendorQC
+        active === "Quality Control" || active === "QC Ulang" || directVendorQC
           ? available.map((x) => ({
               ...x,
               passed: x.qty,
@@ -2126,11 +2206,9 @@ export default function Home() {
       flash("Penerimaan gudang ini sudah dikirim ke QC.");
       return;
     }
-    if (active === "Quality Control") {
+    if (active === "Quality Control" || active === "QC Ulang") {
       if (
-        (data.records["Quality Control"] ?? []).some(
-          (x) => x.sourceId === form.sourceId,
-        )
+        (data.records[active] ?? []).some((x) => x.sourceId === form.sourceId)
       ) {
         flash("Kiriman ini sudah diterima dan diperiksa QC.");
         return;
@@ -2175,9 +2253,10 @@ export default function Home() {
         "Bundle",
         "Penerimaan Gudang",
         "Quality Control",
+        "QC Ulang",
       ].includes(active)
     ) {
-      const source = (data.records[info.source ?? ""] ?? []).find(
+      const source = sourcesForStage(active).find(
         (x) => x.id === form.sourceId,
       );
       if (!source) return;
@@ -2288,9 +2367,6 @@ export default function Home() {
     const qcPassed = qcDetails.reduce((n, x) => n + x.passed, 0),
       qcReject = qcDetails.reduce((n, x) => n + x.reject, 0),
       qcRepair = qcDetails.reduce((n, x) => n + x.repair, 0);
-    const qcSource = (data.records["Pengiriman QC"] ?? []).find(
-      (x) => x.id === form.sourceId,
-    );
     const receiptShipment =
       active === "Penerimaan Gudang"
         ? (data.records["Pengiriman Vendor"] ?? []).find(
@@ -2298,6 +2374,9 @@ export default function Home() {
           )
         : undefined;
     const receiptVendor = vendorForShipment(receiptShipment);
+    const recordSource = sourcesForStage(active).find(
+      (x) => x.id === form.sourceId,
+    );
     const directVendorQC =
       active === "Penerimaan Gudang" && receiptVendor?.qcMode === "vendor";
     const record: RecordRow = {
@@ -2310,7 +2389,7 @@ export default function Home() {
       variants: matrix.filter((x) => x.qty > 0),
       total: sum(matrix),
       status:
-        active === "Quality Control"
+        active === "Quality Control" || active === "QC Ulang"
           ? "Selesai diperiksa"
           : directVendorQC
             ? "Diterima · sudah QC vendor"
@@ -2321,16 +2400,24 @@ export default function Home() {
       note: form.note,
       remainingStatus: form.remainingStatus,
       qcPassed:
-        active === "Quality Control" || directVendorQC ? qcPassed : undefined,
+        active === "Quality Control" || active === "QC Ulang" || directVendorQC
+          ? qcPassed
+          : undefined,
       qcReject:
-        active === "Quality Control" || directVendorQC ? qcReject : undefined,
+        active === "Quality Control" || active === "QC Ulang" || directVendorQC
+          ? qcReject
+          : undefined,
       qcRepair:
-        active === "Quality Control" || directVendorQC ? qcRepair : undefined,
+        active === "Quality Control" || active === "QC Ulang" || directVendorQC
+          ? qcRepair
+          : undefined,
       qcDetails:
-        active === "Quality Control" || directVendorQC ? qcDetails : undefined,
+        active === "Quality Control" || active === "QC Ulang" || directVendorQC
+          ? qcDetails
+          : undefined,
       originVendor:
-        active === "Quality Control" && qcSource
-          ? vendorFromQC({ ...qcSource, sourceId: qcSource.id })
+        (active === "Quality Control" || active === "QC Ulang") && recordSource
+          ? traceOriginVendor(recordSource)
           : directVendorQC
             ? receiptShipment?.destination
             : undefined,
@@ -2341,7 +2428,7 @@ export default function Home() {
           ? form.sourceId
           : active === "Bundle"
             ? cuttingSource?.poId
-            : receiptShipment?.poId,
+            : (receiptShipment?.poId ?? tracePOId(recordSource)),
       batchNo,
       bundleNo: active === "Bundle" ? bundleNo : receiptShipment?.bundleNo,
       deliveryNoteId: receiptShipment?.deliveryNoteId,
@@ -2372,52 +2459,29 @@ export default function Home() {
         ...records,
         "Quality Control": [...(records["Quality Control"] ?? []), qcRecord],
       };
-      const passedVariants = qcDetails
-        .map((x) => ({ color: x.color, size: x.size, qty: x.passed }))
-        .filter((x) => x.qty > 0);
-      if (sum(passedVariants) > 0) {
-        const stockId = code(
-          "STK",
-          model.code,
-          (records["Stok Barang Jadi"] ?? []).length,
-          form.date,
-        );
-        records = {
-          ...records,
-          "Stok Barang Jadi": [
-            ...(records["Stok Barang Jadi"] ?? []),
-            {
-              ...qcRecord,
-              id: stockId,
-              stage: "Stok Barang Jadi",
-              sourceId: qcId,
-              variants: passedVariants,
-              total: sum(passedVariants),
-              status: "Stok jadi",
-              qcDetails: undefined,
-              qcPassed: undefined,
-              qcRepair: undefined,
-              qcReject: undefined,
-            },
-          ],
-        };
-      }
     }
     let notes = data.notes;
     const createsNote = [
       "Pengiriman Vendor",
       "Penerimaan Gudang",
       "Pengiriman QC",
+      "Rework",
+      "Penerimaan Rework",
     ].includes(active);
     if (createsNote && info.move) {
       const [fromDefault, toDefault] = info.move.split(" → ");
       const vendorShipment = (data.records["Pengiriman Vendor"] ?? []).find(
         (x) => x.id === form.sourceId,
       );
+      const reworkShipment = (data.records.Rework ?? []).find(
+        (x) => x.id === form.sourceId,
+      );
       const from =
         active === "Penerimaan Gudang"
           ? vendorShipment?.destination || fromDefault
-          : fromDefault;
+          : active === "Penerimaan Rework"
+            ? reworkShipment?.destination || fromDefault
+            : fromDefault;
       const note: Note = {
         id: `SJ-${form.date.replaceAll("-", "")}-${model.code}-${info.prefix}-${String(notes.length + 1).padStart(3, "0")}`,
         date: form.date,
@@ -2449,7 +2513,29 @@ export default function Home() {
       `${record.id} tersimpan${createsNote ? " dan surat jalan dibuat otomatis" : ""}.`,
     );
   }
-  const current = data.records[active] ?? [];
+  const qcOutcomeSources = [
+    ...(data.records["Quality Control"] ?? []),
+    ...(data.records["QC Ulang"] ?? []),
+  ];
+  const rejectRows = qcOutcomeSources
+    .map((q) => {
+      const variants = (q.qcDetails ?? [])
+        .map((x) => ({ color: x.color, size: x.size, qty: x.reject }))
+        .filter((x) => x.qty > 0);
+      return {
+        ...q,
+        id: `RJT-${q.id}`,
+        stage: "Karantina Reject",
+        sourceId: q.id,
+        variants,
+        total: sum(variants),
+        status: "Karantina",
+        poId: tracePOId(q),
+      };
+    })
+    .filter((x) => x.total > 0);
+  const current =
+    active === "Karantina Reject" ? rejectRows : (data.records[active] ?? []);
   const filteredNotes = useMemo(
     () =>
       data.notes.filter((n) =>
@@ -2658,31 +2744,27 @@ export default function Home() {
                   onDelete={deletePIC}
                 />
               )}
-              {stages.includes(active) && (
+              {stages.includes(active) && active !== "Karantina Reject" && (
                 <div
                   className={`live-stage ${active === "Quality Control" ? "qc-stage" : active === "Rework" ? "rework-stage" : ""}`}
                 >
                   <StagePage
                     active={active}
                     rows={current}
-                    sources={(
-                      data.records[stageInfo[active].source ?? ""] ?? []
-                    ).filter(
+                    sources={sourcesForStage(active).filter(
                       (x) =>
                         active !== "Pengiriman QC" || x.qcMode !== "vendor",
                     )}
                     allRecords={data.records}
                     sourceCount={
-                      (
-                        data.records[stageInfo[active].source ?? ""] ?? []
-                      ).filter(
+                      sourcesForStage(active).filter(
                         (x) =>
                           active !== "Pengiriman QC" || x.qcMode !== "vendor",
                       ).length
                     }
                     onAdd={openRecord}
                   />
-                  {active === "Quality Control" && (
+                  {(active === "Quality Control" || active === "QC Ulang") && (
                     <QCSummary rows={current} allRecords={data.records} />
                   )}{" "}
                   {active === "Rework" && (
@@ -2697,6 +2779,9 @@ export default function Home() {
                     allRecords={data.records}
                   />
                 </div>
+              )}
+              {active === "Karantina Reject" && (
+                <RejectQuarantine rows={rejectRows} />
               )}
               {active === "Surat Jalan" && (
                 <Notes
@@ -3035,7 +3120,7 @@ export default function Home() {
                     onChange={(e) => selectSource(e.target.value)}
                   >
                     <option value="">Pilih transaksi sumber</option>
-                    {(data.records[stageInfo[active].source ?? ""] ?? [])
+                    {sourcesForStage(active)
                       .filter(
                         (x) =>
                           (active !== "Bundle" || sum(remainingFor(x)) > 0) &&
@@ -3052,9 +3137,11 @@ export default function Home() {
                                 ? sum(remainingAtVendor(x))
                                 : active === "Rework"
                                   ? sum(routedVariants(active, x))
-                                  : active === "Stok Barang Jadi"
-                                    ? (x.qcPassed ?? 0)
-                                    : x.total}{" "}
+                                  : active === "Karantina Reject"
+                                    ? sum(routedVariants(active, x))
+                                    : active === "Stok Barang Jadi"
+                                      ? sum(routedVariants(active, x))
+                                      : x.total}{" "}
                           unit tersedia
                         </option>
                       ))}
@@ -3357,7 +3444,7 @@ export default function Home() {
                 </div>
               </div>
             )}
-            {active === "Quality Control" ? (
+            {active === "Quality Control" || active === "QC Ulang" ? (
               <QCDetailTable values={qcDetails} onChange={setQcDetails} />
             ) : (
               <>
@@ -3876,18 +3963,14 @@ function QCSummary({
 function reconcileData(data: AppData) {
   const issues: string[] = [],
     records = data.records,
-    links: [
-      [string, string],
-      [string, string],
-      [string, string],
-      [string, string],
-      [string, string],
-    ] = [
+    links: [string, string][] = [
       ["Order Produksi", "Cutting"],
       ["Cutting", "Bundle"],
       ["Bundle", "Pengiriman Vendor"],
       ["Pengiriman Vendor", "Penerimaan Gudang"],
       ["Penerimaan Gudang", "Pengiriman QC"],
+      ["Rework", "Penerimaan Rework"],
+      ["Penerimaan Rework", "QC Ulang"],
     ];
   for (const [stage, rows] of Object.entries(records))
     for (const row of rows) {
@@ -3896,7 +3979,7 @@ function reconcileData(data: AppData) {
           `${row.id}: total ${row.total} ≠ rincian ${sum(row.variants)}`,
         );
       if (
-        stage === "Quality Control" &&
+        (stage === "Quality Control" || stage === "QC Ulang") &&
         (row.qcPassed ?? 0) + (row.qcRepair ?? 0) + (row.qcReject ?? 0) !==
           row.total
       )
@@ -3937,13 +4020,55 @@ function reconcileData(data: AppData) {
     if (!(records[parentStage] ?? []).some((x) => x.id === child.sourceId))
       issues.push(`${child.id}: sumber QC ${child.sourceId} tidak ditemukan`);
   }
+  for (const child of records["QC Ulang"] ?? [])
+    if (
+      !(records["Penerimaan Rework"] ?? []).some((x) => x.id === child.sourceId)
+    )
+      issues.push(
+        `${child.id}: sumber QC ulang ${child.sourceId} tidak ditemukan`,
+      );
+
+  const qcRows = [
+    ...(records["Quality Control"] ?? []),
+    ...(records["QC Ulang"] ?? []),
+  ];
+  for (const qc of qcRows) {
+    const checks: [string, "passed" | "repair" | "reject"][] = [
+      ["Stok Barang Jadi", "passed"],
+      ["Rework", "repair"],
+      ["Karantina Reject", "reject"],
+    ];
+    for (const [stage, resultKey] of checks) {
+      const used = (records[stage] ?? [])
+        .filter((x) => x.sourceId === qc.id)
+        .flatMap((x) => x.variants);
+      for (const detail of qc.qcDetails ?? []) {
+        const allocated = used
+          .filter((x) => x.color === detail.color && x.size === detail.size)
+          .reduce((n, x) => n + x.qty, 0);
+        if (allocated > detail[resultKey])
+          issues.push(
+            `${qc.id}: alokasi ${stage} ${detail.color} ${detail.size} melebihi hasil QC`,
+          );
+      }
+    }
+  }
   for (const stage of [
     "Pengiriman Vendor",
     "Penerimaan Gudang",
     "Pengiriman QC",
+    "Rework",
+    "Penerimaan Rework",
   ])
     for (const row of records[stage] ?? [])
-      if (!data.notes.some((n) => n.sourceId === row.id))
+      if (
+        !data.notes.some(
+          (n) =>
+            n.sourceId === row.id ||
+            n.id === row.deliveryNoteId ||
+            n.bundleIds?.includes(row.sourceId),
+        )
+      )
         issues.push(`${row.id}: surat jalan belum ditemukan`);
   return [...new Set(issues)];
 }
@@ -4280,48 +4405,77 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
         return { ...row, variants, total: sum(variants) };
       })
       .filter((x) => x.total > 0);
-  const qcRows = records["Quality Control"] ?? [],
-    reworkWaiting = qcRows.filter(
-      (q) =>
-        (q.qcRepair ?? 0) + (q.qcReject ?? 0) > 0 &&
-        !children("Rework", q.id).length,
-    ),
-    stockWaiting = qcRows.filter(
-      (q) =>
-        (q.qcPassed ?? 0) > 0 && !children("Stok Barang Jadi", q.id).length,
+  const qcRows = [
+    ...(records["Quality Control"] ?? []),
+    ...(records["QC Ulang"] ?? []),
+  ];
+  const outcomeBalance = (
+    q: RecordRow,
+    key: "passed" | "repair" | "reject",
+    usedStage: string,
+  ) => {
+    const base = (q.qcDetails ?? [])
+      .map((x) => ({ color: x.color, size: x.size, qty: x[key] }))
+      .filter((x) => x.qty > 0);
+    const variants = subtractVariants(
+      base,
+      children(usedStage, q.id).flatMap((x) => x.variants),
     );
-  const pendingReworkRows = reworkWaiting.map((q) => {
-    const variants = (q.qcDetails ?? [])
-      .map((x) => ({ color: x.color, size: x.size, qty: x.repair + x.reject }))
-      .filter((x) => x.qty > 0);
     return { ...q, variants, total: sum(variants) };
-  });
-  const pendingStockRows = stockWaiting.map((q) => {
-    const variants = (q.qcDetails ?? [])
-      .map((x) => ({ color: x.color, size: x.size, qty: x.passed }))
-      .filter((x) => x.qty > 0);
-    return { ...q, variants, total: sum(variants) };
+  };
+  const pendingReworkRows = qcRows
+      .map((q) => outcomeBalance(q, "repair", "Rework"))
+      .filter((x) => x.total > 0),
+    pendingStockRows = qcRows
+      .map((q) => outcomeBalance(q, "passed", "Stok Barang Jadi"))
+      .filter((x) => x.total > 0),
+    pendingRejectRows = qcRows
+      .map((q) => outcomeBalance(q, "reject", "Karantina Reject"))
+      .filter((x) => x.total > 0);
+  const repairOnlyReworkRows = (records.Rework ?? []).map((row) => {
+    const source = qcRows.find((x) => x.id === row.sourceId);
+    if (!source?.qcDetails) return row;
+    const repair = source.qcDetails.map((x) => ({
+      color: x.color,
+      size: x.size,
+      qty: x.repair,
+    }));
+    const variants = row.variants.map((x) => ({
+      ...x,
+      qty: Math.min(
+        x.qty,
+        repair.find((v) => v.color === x.color && v.size === x.size)?.qty ?? 0,
+      ),
+    }));
+    return { ...row, variants, total: sum(variants) };
   });
   const positions: Record<string, RecordRow[]> = {
-    "Order Produksi": (records["Order Produksi"] ?? []).filter(
-      (x) => children("Cutting", x.id).length === 0,
-    ),
+    "Order Produksi": withBalance(records["Order Produksi"] ?? [], "Cutting"),
     Cutting: withBalance(records.Cutting ?? [], "Bundle"),
-    Bundle: (records.Bundle ?? []).filter(
-      (x) => children("Pengiriman Vendor", x.id).length === 0,
-    ),
+    Bundle: withBalance(records.Bundle ?? [], "Pengiriman Vendor"),
     "Pengiriman Vendor": withBalance(
       records["Pengiriman Vendor"] ?? [],
       "Penerimaan Gudang",
     ),
-    "Penerimaan Gudang": (records["Penerimaan Gudang"] ?? []).filter(
-      (x) =>
-        x.qcMode !== "vendor" && children("Pengiriman QC", x.id).length === 0,
+    "Penerimaan Gudang": withBalance(
+      (records["Penerimaan Gudang"] ?? []).filter((x) => x.qcMode !== "vendor"),
+      "Pengiriman QC",
     ),
-    "Pengiriman QC": (records["Pengiriman QC"] ?? []).filter(
-      (x) => children("Quality Control", x.id).length === 0,
+    "Pengiriman QC": withBalance(
+      records["Pengiriman QC"] ?? [],
+      "Quality Control",
     ),
-    Rework: pendingReworkRows,
+    "Lolos QC": pendingStockRows,
+    "Repair Menunggu": pendingReworkRows,
+    Rework: withBalance(repairOnlyReworkRows, "Penerimaan Rework"),
+    "Penerimaan Rework": withBalance(
+      records["Penerimaan Rework"] ?? [],
+      "QC Ulang",
+    ),
+    "Karantina Reject": [
+      ...(records["Karantina Reject"] ?? []),
+      ...pendingRejectRows,
+    ],
     "Stok Barang Jadi": records["Stok Barang Jadi"] ?? [],
   };
   const units = (key: string) =>
@@ -4333,15 +4487,17 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
     { key: "Bundle", label: "Bundle", icon: "▱" },
     { key: "Pengiriman Vendor", label: "Vendor Jahit", icon: "↗" },
     { key: "Penerimaan Gudang", label: "Gudang", icon: "□" },
-    { key: "Pengiriman QC", label: "Quality Control", icon: "✓" },
-    { key: "Rework", label: "Rework", icon: "↻" },
+    { key: "Pengiriman QC", label: "Menunggu QC", icon: "✓" },
+    { key: "Lolos QC", label: "Lolos · Belum Stok", icon: "✓" },
+    { key: "Repair Menunggu", label: "Repair · Belum Dikirim", icon: "↻" },
+    { key: "Rework", label: "Sedang Rework", icon: "↻" },
+    { key: "Penerimaan Rework", label: "Menunggu QC Ulang", icon: "□" },
+    { key: "Karantina Reject", label: "Reject", icon: "!" },
     { key: "Stok Barang Jadi", label: "Stok Jadi", icon: "▣" },
   ].map((x) => ({ ...x, value: units(x.key), items: positions[x.key] ?? [] }));
-  const totalWip =
-      cards
-        .filter((x) => x.key !== "Stok Barang Jadi")
-        .reduce((n, x) => n + x.value, 0) +
-      pendingStockRows.reduce((n, x) => n + x.total, 0),
+  const totalWip = cards
+      .filter((x) => x.key !== "Stok Barang Jadi")
+      .reduce((n, x) => n + x.value, 0),
     selected = breakdown ? (positions[breakdown] ?? []) : [],
     issues = reconcileData(data);
   const tasks = [
@@ -4397,7 +4553,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
       stage: "Stok Barang Jadi",
       icon: "▣",
       title: "Hasil lolos QC menunggu stok",
-      items: stockWaiting.length,
+      items: pendingStockRows.length,
       units: pendingStockRows.reduce((n, x) => n + x.total, 0),
       action: "Masukkan Stok",
     },
@@ -4405,12 +4561,33 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
       stage: "Rework",
       icon: "↻",
       title: "Hasil QC perlu tindak lanjut",
-      items: reworkWaiting.length,
-      units: reworkWaiting.reduce(
-        (n, x) => n + (x.qcRepair ?? 0) + (x.qcReject ?? 0),
-        0,
-      ),
+      items: pendingReworkRows.length,
+      units: pendingReworkRows.reduce((n, x) => n + x.total, 0),
       action: "Proses Rework",
+    },
+    {
+      stage: "Penerimaan Rework",
+      icon: "□",
+      title: "Barang sedang diperbaiki vendor",
+      items: positions.Rework.length,
+      units: units("Rework"),
+      action: "Terima Rework",
+    },
+    {
+      stage: "QC Ulang",
+      icon: "✓",
+      title: "Hasil Rework menunggu QC ulang",
+      items: positions["Penerimaan Rework"].length,
+      units: units("Penerimaan Rework"),
+      action: "Periksa Ulang",
+    },
+    {
+      stage: "Karantina Reject",
+      icon: "!",
+      title: "Reject perlu dikarantina",
+      items: pendingRejectRows.length,
+      units: pendingRejectRows.reduce((n, x) => n + x.total, 0),
+      action: "Catat Reject",
     },
   ].filter((x) => x.items > 0 || x.units > 0);
   return (
@@ -4563,7 +4740,15 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
                 <button
                   className="primary"
                   type="button"
-                  onClick={() => go(breakdown)}
+                  onClick={() =>
+                    go(
+                      breakdown === "Lolos QC"
+                        ? "Stok Barang Jadi"
+                        : breakdown === "Repair Menunggu"
+                          ? "Rework"
+                          : breakdown,
+                    )
+                  }
                 >
                   Buka proses →
                 </button>
@@ -4832,6 +5017,73 @@ function VendorMaster({
     </>
   );
 }
+function RejectQuarantine({ rows }: { rows: RecordRow[] }) {
+  return (
+    <>
+      <div className="page-title">
+        <div>
+          <p className="overline">POSISI FISIK</p>
+          <h1>Karantina Reject</h1>
+          <span>
+            Barang reject dipisahkan dari repair dan tidak dapat masuk stok.
+          </span>
+        </div>
+      </div>
+      <section className="panel table-panel">
+        {rows.length === 0 ? (
+          <Empty
+            title="Tidak ada barang reject"
+            text="Barang gagal QC akan muncul otomatis di sini beserta warna, ukuran, dan sumber PO."
+          />
+        ) : (
+          <div className="scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>NO.</th>
+                  <th>SUMBER QC</th>
+                  <th>PO</th>
+                  <th>MODEL</th>
+                  <th>WARNA & UKURAN</th>
+                  <th>JUMLAH</th>
+                  <th>STATUS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, index) => (
+                  <tr key={row.id}>
+                    <td>{index + 1}</td>
+                    <td>
+                      <b>{row.sourceId}</b>
+                    </td>
+                    <td>
+                      <b>{row.poId || "—"}</b>
+                    </td>
+                    <td>{row.modelName}</td>
+                    <td>
+                      <small>
+                        {row.variants
+                          .map((x) => `${x.color} ${x.size}: ${x.qty}`)
+                          .join(" · ")}
+                      </small>
+                    </td>
+                    <td>
+                      <b>{row.total}</b> unit
+                    </td>
+                    <td>
+                      <span className="status">Karantina</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
 function StagePage({
   active,
   rows,
@@ -4910,6 +5162,21 @@ function StagePage({
     active === "Pengiriman QC" || active === "Quality Control"
       ? sources.filter((x) => !downstreamIds.has(x.id)).length
       : 0;
+  const availableSpecial = [
+    "Rework",
+    "Penerimaan Rework",
+    "QC Ulang",
+    "Karantina Reject",
+    "Stok Barang Jadi",
+  ].includes(active)
+    ? sources.filter((x) => {
+        if (downstreamIds.has(x.id)) return false;
+        if (active === "Rework") return (x.qcRepair ?? 0) > 0;
+        if (active === "Karantina Reject") return (x.qcReject ?? 0) > 0;
+        if (active === "Stok Barang Jadi") return (x.qcPassed ?? 0) > 0;
+        return true;
+      }).length
+    : 0;
   const qcSummary =
     active === "Quality Control"
       ? rows.map((q) => {
@@ -4948,7 +5215,15 @@ function StagePage({
             (active === "Penerimaan Gudang" &&
               activeVendorCards.length === 0) ||
             ((active === "Pengiriman QC" || active === "Quality Control") &&
-              availableOnce === 0)
+              availableOnce === 0) ||
+            ([
+              "Rework",
+              "Penerimaan Rework",
+              "QC Ulang",
+              "Karantina Reject",
+              "Stok Barang Jadi",
+            ].includes(active) &&
+              availableSpecial === 0)
           }
           onClick={onAdd}
         >
@@ -4965,7 +5240,15 @@ function StagePage({
                     ? "Kirim ke QC"
                     : active === "Quality Control"
                       ? "Terima & periksa"
-                      : "Catat proses"}
+                      : active === "Rework"
+                        ? "Kirim repair"
+                        : active === "Penerimaan Rework"
+                          ? "Terima hasil repair"
+                          : active === "QC Ulang"
+                            ? "Periksa ulang"
+                            : active === "Stok Barang Jadi"
+                              ? "Masukkan stok"
+                              : "Catat proses"}
         </button>
       </div>
       {blocked && (

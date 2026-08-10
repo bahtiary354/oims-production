@@ -11,14 +11,48 @@ const initialState = {
 };
 
 function normalizeState(saved: Record<string, unknown>) {
+  const rawRecords =
+    saved.records && typeof saved.records === "object"
+      ? (saved.records as Record<string, Array<Record<string, unknown>>>)
+      : {};
+  const rows: Array<Record<string, unknown>> = Object.entries(
+    rawRecords,
+  ).flatMap(([stage, items]) =>
+    (Array.isArray(items) ? items : []).map((item) => ({
+      ...(item as Record<string, unknown>),
+      stage,
+    })),
+  );
+  const byId = new Map(rows.map((row) => [String(row.id ?? ""), row]));
+  const resolvePO = (
+    row: Record<string, unknown>,
+    seen = new Set<string>(),
+  ): string | undefined => {
+    if (typeof row.poId === "string" && row.poId) return row.poId;
+    if (row.stage === "Order Produksi" && typeof row.id === "string")
+      return row.id;
+    const sourceId = typeof row.sourceId === "string" ? row.sourceId : "";
+    if (!sourceId || seen.has(sourceId)) return undefined;
+    seen.add(sourceId);
+    const parent = byId.get(sourceId);
+    return parent ? resolvePO(parent, seen) : undefined;
+  };
+  const records = Object.fromEntries(
+    Object.entries(rawRecords).map(([stage, items]) => [
+      stage,
+      (Array.isArray(items) ? items : []).map((item) => ({
+        ...item,
+        poId: resolvePO({ ...item, stage }) ?? item.poId,
+      })),
+    ]),
+  );
   return {
     dataVersion: 3,
     models: Array.isArray(saved.models) ? saved.models : [],
     vendors: Array.isArray(saved.vendors) ? saved.vendors : [],
     qcLocations: Array.isArray(saved.qcLocations) ? saved.qcLocations : [],
     pics: Array.isArray(saved.pics) ? saved.pics : [],
-    records:
-      saved.records && typeof saved.records === "object" ? saved.records : {},
+    records,
     notes: Array.isArray(saved.notes) ? saved.notes : [],
   };
 }
@@ -76,16 +110,14 @@ export async function PUT(request: Request) {
     if (readError) throw readError;
 
     if (current?.payload) {
-      const { error: backupError } = await db
-        .from("app_state")
-        .upsert(
-          {
-            id: 2,
-            payload: current.payload,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "id" },
-        );
+      const { error: backupError } = await db.from("app_state").upsert(
+        {
+          id: 2,
+          payload: current.payload,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" },
+      );
       if (backupError) throw backupError;
     }
 

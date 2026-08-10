@@ -70,9 +70,13 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(css, /2026 visual refresh/);
   assert.match(css, /--green:#2563eb/);
   assert.match(page, /QC Vendor Selesai/);
-  assert.match(page, /Lolos QC · Menunggu Stok/);
+  assert.match(page, /Lolos · Belum Stok/);
   assert.match(page, /Hasil lolos QC menunggu stok/);
-  assert.match(page, /Rework:\s*pendingReworkRows/);
+  assert.match(page, /Rework:\s*withBalance/);
+  assert.match(page, /Penerimaan Rework/);
+  assert.match(page, /QC Ulang/);
+  assert.match(page, /Karantina Reject/);
+  assert.match(page, /qty:\s*x\.repair/);
   assert.match(page, /className="production-board"/);
   assert.match(page, /Posisi pekerjaan saat ini/);
   assert.match(page, /RINCIAN TAHAP/);
@@ -118,6 +122,7 @@ test("persistent state is normalized without destructive reads and masters remai
   assert.match(route, /qcLocations: \[\]/);
   assert.match(route, /pics: \[\]/);
   assert.match(route, /Array\.isArray\(saved\.pics\)/);
+  assert.match(route, /resolvePO/);
   assert.match(route, /records: \{\}/);
   assert.match(route, /notes: \[\]/);
   assert.match(route, /normalizeState/);
