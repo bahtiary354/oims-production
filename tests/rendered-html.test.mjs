@@ -48,8 +48,14 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.doesNotMatch(page, /className="mobile-bottom-nav"/);
   assert.match(page, /aria-label="Buka semua menu"/);
   assert.match(css, /\.app-side\.mobile-open/);
-  assert.match(css, /\.overlay\s*\{[\s\S]*?z-index:\s*120;[\s\S]*?padding:\s*10px/);
-  assert.match(css, /\.page-title \.overline,\s*\.page-title h1\s*\{\s*display:\s*none/);
+  assert.match(
+    css,
+    /\.overlay\s*\{[\s\S]*?z-index:\s*120;[\s\S]*?padding:\s*10px/,
+  );
+  assert.match(
+    css,
+    /\.page-title \.overline,\s*\.page-title h1\s*\{\s*display:\s*none/,
+  );
   assert.doesNotMatch(css, /mobile-bottom-nav/);
   assert.match(css, /grid-template-columns:\s*repeat\(5,\s*1fr\)/);
   assert.match(
@@ -75,6 +81,14 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /periodRows\("Pengiriman Vendor"\)/);
   assert.match(page, /periodRows\("Penerimaan Gudang"\)/);
   assert.match(page, /periodRows\("Stok Barang Jadi"\)/);
+  assert.match(page, /Stok jadi & potensi produksi/);
+  assert.match(page, /STOK JADI AKTUAL/);
+  assert.match(page, /SIAP MASUK STOK/);
+  assert.match(page, /PROYEKSI MAKSIMUM/);
+  assert.match(page, /futurePotential/);
+  assert.match(page, /stockOutlook/);
+  assert.match(page, /traceStockVendor/);
+  assert.match(page, /const boardCards = cards\.filter/);
   assert.match(page, /Isi seluruh sisa setoran/);
   assert.match(page, /Lolos semua/);
   assert.match(css, /2026 visual refresh/);

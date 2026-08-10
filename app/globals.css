@@ -4303,6 +4303,228 @@ body {
     min-height: 22px;
   }
 }
+.stock-outlook {
+  margin-bottom: 14px;
+  overflow: hidden;
+  border: 1px solid #dfe6f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.045);
+}
+.stock-outlook > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #e8edf5;
+}
+.stock-outlook h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+.stock-outlook header span {
+  display: block;
+  color: #7b8595;
+  font-size: 9px;
+}
+.stock-outlook > header button {
+  border: 1px solid #cbd9fb;
+  border-radius: 8px;
+  background: #fff;
+  color: #2563eb;
+  padding: 9px 12px;
+  font-size: 9px;
+  font-weight: 750;
+}
+.stock-outlook-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  padding: 12px;
+  background: #f7f9fc;
+}
+.stock-outlook-kpis article {
+  min-height: 94px;
+  padding: 13px;
+  border: 1px solid #e0e6ef;
+  border-top: 3px solid #7893c8;
+  border-radius: 10px;
+  background: #fff;
+}
+.stock-outlook-kpis article.actual {
+  border-top-color: #16855b;
+}
+.stock-outlook-kpis article.ready {
+  border-top-color: #2563eb;
+}
+.stock-outlook-kpis article.waiting {
+  border-top-color: #6f8ca4;
+}
+.stock-outlook-kpis article.repair {
+  border-top-color: #d49734;
+}
+.stock-outlook-kpis article.forecast {
+  border-top-color: #6d55c7;
+  background: #faf9ff;
+}
+.stock-outlook-kpis span,
+.stock-outlook-kpis b,
+.stock-outlook-kpis small {
+  display: block;
+}
+.stock-outlook-kpis span {
+  color: #6d7787;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.45px;
+}
+.stock-outlook-kpis b {
+  margin: 8px 0 4px;
+  color: #111827;
+  font-size: 25px;
+}
+.stock-outlook-kpis small {
+  color: #8791a0;
+  font-size: 8px;
+}
+.stock-outlook-table {
+  padding: 0 14px 12px;
+}
+.stock-table-head,
+.stock-model-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.4fr) repeat(6, minmax(68px, 0.6fr));
+  align-items: center;
+  gap: 8px;
+}
+.stock-table-head {
+  padding: 11px 12px 8px;
+  color: #7b8595;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.45px;
+}
+.stock-table-head span:not(:first-child) {
+  text-align: right;
+}
+.stock-model {
+  overflow: hidden;
+  border-top: 1px solid #e8edf5;
+}
+.stock-model-row {
+  width: 100%;
+  border: 0;
+  background: #fff;
+  padding: 12px;
+  color: #1f2937;
+  text-align: left;
+}
+.stock-model-row:hover {
+  background: #f8faff;
+}
+.stock-model-row span b,
+.stock-model-row span small {
+  display: block;
+}
+.stock-model-row span b {
+  font-size: 11px;
+}
+.stock-model-row span small {
+  margin-top: 3px;
+  color: #8a94a3;
+  font-size: 8px;
+}
+.stock-model-row > strong {
+  text-align: right;
+  font-size: 11px;
+}
+.stock-model-row > strong.projected {
+  color: #2563eb;
+  font-size: 13px;
+}
+.stock-model-detail {
+  padding: 8px 12px 12px;
+  background: #f7f9fc;
+}
+.stock-vendors {
+  margin: 0 0 8px;
+  color: #667085;
+  font-size: 8px;
+}
+.stock-variant-head,
+.stock-variant-row {
+  display: grid;
+  grid-template-columns: minmax(95px, 1fr) 52px repeat(6, minmax(55px, 0.6fr));
+  gap: 6px;
+  align-items: center;
+}
+.stock-variant-head {
+  padding: 7px 9px;
+  color: #8690a0;
+  font-size: 7px;
+  font-weight: 800;
+}
+.stock-variant-row {
+  margin-top: 3px;
+  padding: 8px 9px;
+  border: 1px solid #e2e7ef;
+  border-radius: 7px;
+  background: #fff;
+  color: #536071;
+  font-size: 8px;
+}
+.stock-variant-row span:nth-child(n + 3),
+.stock-variant-row strong,
+.stock-variant-head span:nth-child(n + 3) {
+  text-align: right;
+}
+.stock-variant-row strong {
+  color: #2563eb;
+}
+.stock-outlook-empty {
+  margin: 0;
+  padding: 25px;
+  color: #7b8595;
+  text-align: center;
+  font-size: 9px;
+}
+.stock-outlook > footer {
+  padding: 9px 15px;
+  border-top: 1px solid #e8edf5;
+  background: #fffaf0;
+  color: #8a6424;
+  font-size: 8px;
+}
+@media (max-width: 760px) {
+  .stock-outlook > header {
+    align-items: flex-start;
+    padding: 13px;
+  }
+  .stock-outlook-kpis {
+    display: flex;
+    overflow-x: auto;
+    padding: 10px;
+  }
+  .stock-outlook-kpis article {
+    min-width: 145px;
+  }
+  .stock-outlook-table {
+    overflow-x: auto;
+    padding: 0 10px 10px;
+  }
+  .stock-table-head,
+  .stock-model-row {
+    min-width: 720px;
+  }
+  .stock-model-detail {
+    min-width: 720px;
+  }
+  .stock-variant-head,
+  .stock-variant-row {
+    min-width: 690px;
+  }
+}
 .quick-fill {
   display: block;
   margin: 9px 0 0 auto;

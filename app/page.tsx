@@ -2710,10 +2710,7 @@ export default function Home() {
           ) : (
             <>
               {active === "Dashboard" && (
-                <>
-                  <Dashboard data={data} go={setActive} />
-                  <OwnerVendorMonitoring data={data} />
-                </>
+                <Dashboard data={data} go={setActive} />
               )}
               {active === "Master Jaket" && (
                 <Master
@@ -4472,6 +4469,7 @@ function LegacyDashboard({
 
 function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
   const [breakdown, setBreakdown] = useState<string | null>(null),
+    [stockDetail, setStockDetail] = useState<string | null>(null),
     [period, setPeriod] = useState<"today" | "week" | "month" | "custom">(
       "month",
     ),
@@ -4636,6 +4634,120 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
         value: periodRows("Stok Barang Jadi").reduce((n, x) => n + x.total, 0),
       },
     ];
+  const productionRows = [
+      ...positions.Cutting,
+      ...positions.Bundle,
+      ...positions["Pengiriman Vendor"],
+    ],
+    awaitingQCRows = [
+      ...positions["Penerimaan Gudang"],
+      ...positions["Pengiriman QC"],
+    ],
+    repairRows = [
+      ...positions["Repair Menunggu"],
+      ...positions.Rework,
+      ...positions["Penerimaan Rework"],
+    ],
+    stockRows = positions["Stok Barang Jadi"],
+    readyStock = pendingStockRows.reduce((n, x) => n + x.total, 0),
+    awaitingQC = awaitingQCRows.reduce((n, x) => n + x.total, 0),
+    inProduction = productionRows.reduce((n, x) => n + x.total, 0),
+    repairPotential = repairRows.reduce((n, x) => n + x.total, 0),
+    futurePotential = readyStock + awaitingQC + inProduction + repairPotential,
+    projectedMaximum = stock + futurePotential,
+    allTrackedRows = [
+      ...stockRows,
+      ...pendingStockRows,
+      ...awaitingQCRows,
+      ...productionRows,
+      ...repairRows,
+    ],
+    modelCodes = [...new Set(allTrackedRows.map((x) => x.modelCode))],
+    allRecords = Object.values(records).flat();
+  const traceStockVendor = (
+    row: RecordRow | undefined,
+    seen = new Set<string>(),
+  ): string => {
+    if (!row) return "Vendor tidak tercatat";
+    if (row.originVendor) return row.originVendor;
+    if (row.stage === "Pengiriman Vendor")
+      return row.destination || "Vendor tidak tercatat";
+    if (!row.sourceId || seen.has(row.sourceId)) return "Vendor tidak tercatat";
+    seen.add(row.sourceId);
+    return traceStockVendor(
+      allRecords.find((x) => x.id === row.sourceId),
+      seen,
+    );
+  };
+  const stockOutlook = modelCodes.map((modelCode) => {
+    const rowsFor = (rows: RecordRow[]) =>
+        rows.filter((x) => x.modelCode === modelCode),
+      actualRows = rowsFor(stockRows),
+      readyRows = rowsFor(pendingStockRows),
+      qcRowsForModel = rowsFor(awaitingQCRows),
+      productionRowsForModel = rowsFor(productionRows),
+      repairRowsForModel = rowsFor(repairRows),
+      totalOf = (rows: RecordRow[]) => rows.reduce((n, x) => n + x.total, 0),
+      variantKeys = [
+        ...new Set(
+          [
+            ...actualRows,
+            ...readyRows,
+            ...qcRowsForModel,
+            ...productionRowsForModel,
+            ...repairRowsForModel,
+          ].flatMap((x) => x.variants.map((v) => `${v.color}|||${v.size}`)),
+        ),
+      ],
+      variantQty = (rows: RecordRow[], color: string, size: string) =>
+        rows
+          .flatMap((x) => x.variants)
+          .filter((x) => x.color === color && x.size === size)
+          .reduce((n, x) => n + x.qty, 0),
+      variants = variantKeys.map((key) => {
+        const [color, size] = key.split("|||");
+        const actual = variantQty(actualRows, color, size),
+          ready = variantQty(readyRows, color, size),
+          awaiting = variantQty(qcRowsForModel, color, size),
+          production = variantQty(productionRowsForModel, color, size),
+          repair = variantQty(repairRowsForModel, color, size);
+        return {
+          color,
+          size,
+          actual,
+          ready,
+          awaiting,
+          production,
+          repair,
+          projected: actual + ready + awaiting + production + repair,
+        };
+      }),
+      vendorMap = new Map<string, number>();
+    for (const row of actualRows) {
+      const vendor = traceStockVendor(row);
+      vendorMap.set(vendor, (vendorMap.get(vendor) ?? 0) + row.total);
+    }
+    const actual = totalOf(actualRows),
+      ready = totalOf(readyRows),
+      awaiting = totalOf(qcRowsForModel),
+      production = totalOf(productionRowsForModel),
+      repair = totalOf(repairRowsForModel);
+    return {
+      modelCode,
+      modelName:
+        allTrackedRows.find((x) => x.modelCode === modelCode)?.modelName ??
+        modelCode,
+      actual,
+      ready,
+      awaiting,
+      production,
+      repair,
+      projected: actual + ready + awaiting + production + repair,
+      variants,
+      vendors: [...vendorMap.entries()],
+    };
+  });
+  const boardCards = cards.filter((x) => x.key !== "Stok Barang Jadi");
   return (
     <div className="owner-simple">
       <div className="owner-health">
@@ -4661,6 +4773,128 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
             : "✓ Data sinkron"}
         </span>
       </div>
+      <section className="stock-outlook">
+        <header>
+          <div>
+            <h2>Stok jadi & potensi produksi</h2>
+            <span>
+              Saldo aktual dan estimasi berdasarkan posisi terakhir setiap unit
+            </span>
+          </div>
+          <button type="button" onClick={() => go("Stok Barang Jadi")}>
+            Buka data stok →
+          </button>
+        </header>
+        <div className="stock-outlook-kpis">
+          <article className="actual">
+            <span>STOK JADI AKTUAL</span>
+            <b>{stock}</b>
+            <small>unit sudah dibukukan</small>
+          </article>
+          <article className="ready">
+            <span>SIAP MASUK STOK</span>
+            <b>{readyStock}</b>
+            <small>lolos QC · belum stok</small>
+          </article>
+          <article className="waiting">
+            <span>BELUM QC</span>
+            <b>{awaitingQC}</b>
+            <small>gudang dan antrean QC</small>
+          </article>
+          <article className="repair">
+            <span>SEDANG REPAIR</span>
+            <b>{repairPotential}</b>
+            <small>masih berpotensi lolos</small>
+          </article>
+          <article className="forecast">
+            <span>PROYEKSI MAKSIMUM</span>
+            <b>{projectedMaximum}</b>
+            <small>aktual + {futurePotential} potensi</small>
+          </article>
+        </div>
+        <div className="stock-outlook-table">
+          <div className="stock-table-head">
+            <span>MODEL</span>
+            <span>AKTUAL</span>
+            <span>SIAP STOK</span>
+            <span>BELUM QC</span>
+            <span>PRODUKSI</span>
+            <span>REPAIR</span>
+            <span>PROYEKSI</span>
+          </div>
+          {stockOutlook.length === 0 ? (
+            <p className="stock-outlook-empty">
+              Belum ada stok atau produksi aktif.
+            </p>
+          ) : (
+            stockOutlook.map((model) => (
+              <div className="stock-model" key={model.modelCode}>
+                <button
+                  type="button"
+                  className="stock-model-row"
+                  onClick={() =>
+                    setStockDetail(
+                      stockDetail === model.modelCode ? null : model.modelCode,
+                    )
+                  }
+                >
+                  <span>
+                    <b>{model.modelName}</b>
+                    <small>{model.modelCode}</small>
+                  </span>
+                  <strong>{model.actual}</strong>
+                  <strong>{model.ready}</strong>
+                  <strong>{model.awaiting}</strong>
+                  <strong>{model.production}</strong>
+                  <strong>{model.repair}</strong>
+                  <strong className="projected">{model.projected}</strong>
+                </button>
+                {stockDetail === model.modelCode && (
+                  <div className="stock-model-detail">
+                    {model.vendors.length > 0 && (
+                      <p className="stock-vendors">
+                        <b>Stok aktual dari vendor:</b>{" "}
+                        {model.vendors
+                          .map(([vendor, qty]) => `${vendor} ${qty} unit`)
+                          .join(" · ")}
+                      </p>
+                    )}
+                    <div className="stock-variant-head">
+                      <span>WARNA</span>
+                      <span>SIZE</span>
+                      <span>AKTUAL</span>
+                      <span>SIAP</span>
+                      <span>BELUM QC</span>
+                      <span>PRODUKSI</span>
+                      <span>REPAIR</span>
+                      <span>PROYEKSI</span>
+                    </div>
+                    {model.variants.map((variant) => (
+                      <div
+                        className="stock-variant-row"
+                        key={`${variant.color}-${variant.size}`}
+                      >
+                        <span>{variant.color}</span>
+                        <b>{variant.size}</b>
+                        <span>{variant.actual}</span>
+                        <span>{variant.ready}</span>
+                        <span>{variant.awaiting}</span>
+                        <span>{variant.production}</span>
+                        <span>{variant.repair}</span>
+                        <strong>{variant.projected}</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+        <footer>
+          Potensi produksi belum dikurangi kemungkinan reject. Barang reject
+          tidak masuk proyeksi.
+        </footer>
+      </section>
       <section className="owner-activity">
         <header>
           <div>
@@ -4721,6 +4955,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
           ))}
         </div>
       </section>
+      <OwnerVendorMonitoring data={data} />
       <section className="production-board-panel">
         <header>
           <div>
@@ -4733,7 +4968,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
           <b>{stock} unit stok jadi</b>
         </header>
         <div className="production-board">
-          {cards.map((stage, index) => (
+          {boardCards.map((stage, index) => (
             <article
               className={`board-column ${breakdown === stage.key ? "selected" : ""}`}
               key={stage.key}
@@ -4784,7 +5019,9 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
                   </p>
                 )}
               </div>
-              {index < cards.length - 1 && <i className="board-arrow">→</i>}
+              {index < boardCards.length - 1 && (
+                <i className="board-arrow">→</i>
+              )}
             </article>
           ))}
         </div>
@@ -4794,7 +5031,8 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
               <div>
                 <p className="overline">RINCIAN TAHAP</p>
                 <h3>
-                  {cards.find((x) => x.key === breakdown)?.label ?? breakdown}
+                  {boardCards.find((x) => x.key === breakdown)?.label ??
+                    breakdown}
                 </h3>
                 <span>
                   {selected.length} pekerjaan ·{" "}
