@@ -4579,14 +4579,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
     { key: "Karantina Reject", label: "Reject", icon: "!" },
     { key: "Stok Barang Jadi", label: "Stok Jadi", icon: "▣" },
   ].map((x) => ({ ...x, value: units(x.key), items: positions[x.key] ?? [] }));
-  const totalWip = cards
-      .filter((x) => x.key !== "Stok Barang Jadi")
-      .reduce((n, x) => n + x.value, 0),
-    activeStages = cards.filter(
-      (x) => x.key !== "Stok Barang Jadi" && x.value > 0,
-    ).length,
-    selected = breakdown ? (positions[breakdown] ?? []) : [],
-    issues = reconcileData(data);
+  const selected = breakdown ? (positions[breakdown] ?? []) : [];
   const todayDate = new Date(`${today}T12:00:00`),
     weekStartDate = new Date(todayDate);
   weekStartDate.setDate(todayDate.getDate() - ((todayDate.getDay() + 6) % 7));
@@ -4773,29 +4766,6 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
   const boardCards = cards.filter((x) => x.key !== "Stok Barang Jadi");
   return (
     <div className="owner-simple">
-      <div className="owner-health">
-        <div className="owner-health-mark">◎</div>
-        <div className="owner-health-metric">
-          <span>MASIH DALAM PROSES</span>
-          <b>{totalWip}</b>
-          <small>unit</small>
-        </div>
-        <div className="owner-health-metric">
-          <span>TAHAP AKTIF</span>
-          <b>{activeStages}</b>
-          <small>proses</small>
-        </div>
-        <div className="owner-health-metric">
-          <span>STOK JADI</span>
-          <b>{stock}</b>
-          <small>unit</small>
-        </div>
-        <span className={issues.length ? "warning" : "ok"}>
-          {issues.length
-            ? `${issues.length} data perlu dicek`
-            : "✓ Data sinkron"}
-        </span>
-      </div>
       <section className="stock-outlook">
         <header>
           <div>

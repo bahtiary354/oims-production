@@ -72,7 +72,8 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.doesNotMatch(page, /Pekerjaan berikutnya/);
   assert.doesNotMatch(page, /Geser ke samping untuk melihat alur PO/);
   assert.doesNotMatch(page, /ALUR PRODUKSI/);
-  assert.match(page, /TAHAP AKTIF/);
+  assert.doesNotMatch(page, /className="owner-health"/);
+  assert.doesNotMatch(page, /TAHAP AKTIF/);
   assert.match(page, /Aktivitas periode/);
   assert.match(page, /Hanya menyaring aktivitas/);
   assert.match(page, /Hari ini/);
