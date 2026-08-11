@@ -138,6 +138,12 @@ test("production app has correct metadata and connected workflow", async () => {
   );
   assert.match(page, /function traceBundleId/);
   assert.match(page, /Bundle \/ Lot/);
+  assert.match(page, /function BundleLabel/);
+  assert.match(page, /Cetak Thermal 80 mm/);
+  assert.match(page, /PIC \/ Penanggung jawab Bundle/);
+  assert.match(page, /className="bundle-print-button"/);
+  assert.match(css, /@page bundle-label/);
+  assert.match(css, /size:\s*80mm auto/);
   assert.match(page, /bundleId: active === "Bundle" \? recordId/);
   assert.match(page, /Potong seluruh sisa PO/);
   assert.match(page, /PO masih memiliki sisa Cutting/);

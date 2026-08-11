@@ -948,6 +948,131 @@ td button {
   }
 }
 
+/* Printable 80 mm bundle identity card. */
+.bundle-print-button {
+  min-width: 98px;
+  border: 1px solid #bfd0f7;
+  border-radius: 7px;
+  background: #fff;
+  color: #2563eb;
+  padding: 7px 9px;
+  font-size: 10px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.bundle-print-button:hover {
+  background: #edf4ff;
+}
+.bundle-label-sheet {
+  width: min(80mm, 100%);
+}
+.bundle-label-document {
+  width: 80mm;
+  max-width: 100%;
+  margin: auto;
+  padding: 6mm 5mm;
+  background: #fff;
+  color: #111;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.bundle-label-document > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4mm;
+  padding-bottom: 3mm;
+  border-bottom: 2px solid #111;
+}
+.bundle-label-document > header b,
+.bundle-label-document > header span {
+  display: block;
+}
+.bundle-label-document > header b {
+  font-size: 20px;
+  letter-spacing: 1px;
+}
+.bundle-label-document > header span {
+  margin-top: 1mm;
+  font-size: 10px;
+  font-weight: 700;
+}
+.bundle-label-document > header strong {
+  font-size: 20px;
+}
+.bundle-label-code {
+  margin: 3mm 0;
+  padding: 2.5mm 2mm;
+  border: 2px solid #111;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.bundle-label-document dl {
+  margin: 0 0 3mm;
+}
+.bundle-label-document dl > div {
+  display: grid;
+  grid-template-columns: 20mm 1fr;
+  gap: 2mm;
+  padding: 1.2mm 0;
+  border-bottom: 1px dashed #aaa;
+}
+.bundle-label-document dt,
+.bundle-label-document dd {
+  margin: 0;
+  font-size: 12px;
+}
+.bundle-label-document dt {
+  color: #555;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.bundle-label-document dd {
+  font-weight: 800;
+}
+.bundle-label-document table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: normal;
+}
+.bundle-label-document th,
+.bundle-label-document td {
+  border: 1px solid #111;
+  padding: 2mm 1.5mm;
+  font-size: 12px;
+  text-align: left;
+}
+.bundle-label-document th:last-child,
+.bundle-label-document td:last-child {
+  width: 14mm;
+  text-align: right;
+}
+.bundle-label-document tfoot th {
+  font-size: 14px;
+}
+.bundle-label-document > footer {
+  margin-top: 3mm;
+  padding-top: 2mm;
+  border-top: 1px solid #111;
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: center;
+}
+@media print {
+  .bundle-label-document {
+    page: bundle-label;
+    width: 70mm;
+    padding: 0;
+  }
+  @page bundle-label {
+    size: 80mm auto;
+    margin: 5mm;
+  }
+}
+
 /* Oims owner dashboard — deliberately calm, compact, and consistent. */
 .app-brand img {
   width: 42px;

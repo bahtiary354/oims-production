@@ -190,6 +190,7 @@ type RecordRow = {
   originVendor?: string;
   qcMode?: QCMode;
   qcOfficer?: string;
+  officer?: string;
   poId?: string;
   batchNo?: number;
   bundleNo?: number;
@@ -1509,6 +1510,7 @@ export default function Home() {
   const [bundleQty, setBundleQty] = useState(50);
   const [selectedBundleIds, setSelectedBundleIds] = useState<string[]>([]);
   const [print, setPrint] = useState<Note | null>(null);
+  const [bundlePrint, setBundlePrint] = useState<RecordRow | null>(null);
   const [toast, setToast] = useState("");
   const [query, setQuery] = useState("");
 
@@ -2531,6 +2533,7 @@ export default function Home() {
             : undefined,
       qcMode: directVendorQC ? "vendor" : undefined,
       qcOfficer: directVendorQC ? receiptVendor?.qcOfficer : undefined,
+      officer: form.officer,
       poId:
         active === "Cutting"
           ? form.sourceId
@@ -2876,6 +2879,7 @@ export default function Home() {
                       ).length
                     }
                     onAdd={openRecord}
+                    onPrintBundle={setBundlePrint}
                   />
                   {(active === "Quality Control" || active === "QC Ulang") && (
                     <QCSummary rows={current} allRecords={data.records} />
@@ -3343,6 +3347,28 @@ export default function Home() {
                   </label>
                 </>
               )}
+              {active === "Bundle" && (
+                <label>
+                  PIC / Penanggung jawab Bundle
+                  <select
+                    required
+                    value={form.officer}
+                    onChange={(e) =>
+                      setForm({ ...form, officer: e.target.value })
+                    }
+                  >
+                    <option value="">Pilih PIC</option>
+                    {data.pics
+                      .filter((x) => x.active)
+                      .map((x) => (
+                        <option key={x.code} value={x.name}>
+                          {x.code} — {x.name}
+                          {x.role ? ` · ${x.role}` : ""}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
             </div>
             {active === "Cutting" && form.sourceId && (
               <button
@@ -3740,6 +3766,12 @@ export default function Home() {
         </div>
       )}
       {print && <PrintNote note={print} close={() => setPrint(null)} />}
+      {bundlePrint && (
+        <BundleLabel
+          bundle={bundlePrint}
+          close={() => setBundlePrint(null)}
+        />
+      )}
       {toast && <div className="toast">✓ {toast}</div>}
     </main>
   );
@@ -5443,6 +5475,7 @@ function StagePage({
   allRecords,
   sourceCount,
   onAdd,
+  onPrintBundle,
 }: {
   active: string;
   rows: RecordRow[];
@@ -5450,6 +5483,7 @@ function StagePage({
   allRecords: Record<string, RecordRow[]>;
   sourceCount: number;
   onAdd: () => void;
+  onPrintBundle: (bundle: RecordRow) => void;
 }) {
   const info = stageInfo[active];
   const blocked = !!info.source && sourceCount === 0;
@@ -5865,6 +5899,7 @@ function StagePage({
                   <th>RINCIAN</th>
                   <th>TOTAL</th>
                   <th>STATUS</th>
+                  {active === "Bundle" && <th>AKSI</th>}
                 </tr>
               </thead>
               <tbody>
@@ -5897,6 +5932,17 @@ function StagePage({
                         {r.remainingStatus || r.status}
                       </span>
                     </td>
+                    {active === "Bundle" && (
+                      <td>
+                        <button
+                          type="button"
+                          className="bundle-print-button"
+                          onClick={() => onPrintBundle(r)}
+                        >
+                          ▣ Cetak kartu
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -6225,6 +6271,92 @@ function PrintNote({ note, close }: { note: Note; close: () => void }) {
           </div>
           <footer>
             Nomor {note.id} terhubung otomatis dengan transaksi {note.sourceId}.
+          </footer>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function BundleLabel({
+  bundle,
+  close,
+}: {
+  bundle: RecordRow;
+  close: () => void;
+}) {
+  const colors = [...new Set(bundle.variants.map((variant) => variant.color))];
+  return (
+    <div className="overlay print-overlay bundle-label-overlay">
+      <section className="print-sheet bundle-label-sheet">
+        <div className="print-toolbar">
+          <button onClick={close}>← Tutup</button>
+          <button className="primary" onClick={() => window.print()}>
+            ▣ Cetak Thermal 80 mm
+          </button>
+        </div>
+        <div className="bundle-label-document">
+          <header>
+            <div>
+              <b>Oims</b>
+              <span>KARTU BUNDLE PRODUKSI</span>
+            </div>
+            <strong>B{String(bundle.bundleNo ?? 1).padStart(3, "0")}</strong>
+          </header>
+          <div className="bundle-label-code">{bundle.id}</div>
+          <dl>
+            <div>
+              <dt>PO</dt>
+              <dd>{bundle.poId || "—"}</dd>
+            </div>
+            <div>
+              <dt>Model</dt>
+              <dd>{bundle.modelName}</dd>
+            </div>
+            <div>
+              <dt>Cutting</dt>
+              <dd>C{String(bundle.batchNo ?? 1).padStart(2, "0")}</dd>
+            </div>
+            <div>
+              <dt>Tanggal</dt>
+              <dd>{bundle.date}</dd>
+            </div>
+            <div>
+              <dt>PIC</dt>
+              <dd>{bundle.officer || "—"}</dd>
+            </div>
+          </dl>
+          <table>
+            <thead>
+              <tr>
+                <th>WARNA</th>
+                <th>SIZE</th>
+                <th>QTY</th>
+              </tr>
+            </thead>
+            <tbody>
+              {colors.flatMap((color) =>
+                bundle.variants
+                  .filter((variant) => variant.color === color)
+                  .sort((a, b) => compareSizes(a.size, b.size))
+                  .map((variant, index) => (
+                    <tr key={`${variant.color}-${variant.size}`}>
+                      <td>{index === 0 ? color : ""}</td>
+                      <td>{variant.size}</td>
+                      <td>{variant.qty}</td>
+                    </tr>
+                  )),
+              )}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th colSpan={2}>TOTAL BUNDLE</th>
+                <th>{bundle.total}</th>
+              </tr>
+            </tfoot>
+          </table>
+          <footer>
+            Cocokkan kode ini dengan data Bundle sebelum dikirim ke vendor.
           </footer>
         </div>
       </section>
