@@ -85,13 +85,15 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Stok jadi & potensi produksi/);
   assert.match(page, /STOK JADI AKTUAL/);
   assert.match(page, /SIAP MASUK STOK/);
-  assert.match(page, /PROYEKSI MAKSIMUM/);
+  assert.match(page, /POTENSI STOK AKHIR/);
+  assert.match(page, /compareSizes/);
+  assert.match(page, /\.sort\(\(a, b\) => compareSizes\(a\.size, b\.size\)\)/);
   assert.match(page, /futurePotential/);
   assert.match(page, /stockOutlook/);
   assert.match(page, /traceStockVendor/);
   assert.match(page, /className="stock-color-group"/);
   assert.match(page, /model\.colorGroups\.map/);
-  assert.match(page, /group\.projected.*unit proyeksi/);
+  assert.match(page, /group\.projected.*unit potensi akhir/);
   assert.match(page, /const boardCards = cards\.filter/);
   assert.match(css, /\.stock-color-group/);
   assert.match(css, /background:\s*#ffffff/);

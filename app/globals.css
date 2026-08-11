@@ -4792,6 +4792,97 @@ body {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* Dashboard typography system — readable hierarchy for desktop and mobile. */
+.owner-simple {
+  --dashboard-title: clamp(17px, 1.4vw, 19px);
+  --dashboard-subtitle: clamp(10px, 0.85vw, 11px);
+  --dashboard-column: clamp(9px, 0.8vw, 10px);
+  --dashboard-body: clamp(12px, 0.95vw, 14px);
+  --dashboard-meta: clamp(9px, 0.75vw, 10px);
+}
+.owner-simple .stock-outlook h2,
+.owner-simple .owner-activity h2,
+.owner-simple .owner-simple-panel > header h2,
+.owner-simple .production-board-panel > header h2 {
+  font-size: var(--dashboard-title);
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  font-weight: 780;
+}
+.owner-simple .stock-outlook > header span,
+.owner-simple .owner-activity > header span,
+.owner-simple .owner-simple-panel > header span,
+.owner-simple .production-board-panel > header span {
+  font-size: var(--dashboard-subtitle);
+  line-height: 1.45;
+}
+.owner-simple .stock-outlook > header button,
+.owner-simple .period-switch button,
+.owner-simple .production-board-panel > header > b,
+.owner-simple .owner-simple-panel > header > b {
+  font-size: var(--dashboard-meta);
+}
+.owner-simple .stock-outlook-kpis span {
+  font-size: var(--dashboard-column);
+  line-height: 1.35;
+}
+.owner-simple .stock-outlook-kpis b {
+  font-size: clamp(25px, 2.2vw, 29px);
+  line-height: 1;
+}
+.owner-simple .stock-outlook-kpis small {
+  font-size: var(--dashboard-meta);
+  line-height: 1.35;
+}
+.owner-simple .stock-table-head,
+.owner-simple .stock-variant-head,
+.owner-simple .owner-simple-panel th {
+  font-size: var(--dashboard-column);
+  line-height: 1.3;
+}
+.owner-simple .stock-model-row span b {
+  font-size: var(--dashboard-body);
+}
+.owner-simple .stock-model-row span small,
+.owner-simple .stock-vendors {
+  font-size: var(--dashboard-meta);
+}
+.owner-simple .stock-model-row > strong {
+  font-size: var(--dashboard-body);
+}
+.owner-simple .stock-model-row > strong.projected {
+  font-size: clamp(14px, 1.1vw, 16px);
+}
+.owner-simple .owner-simple-panel td,
+.owner-simple .board-column > header b,
+.owner-simple .board-card-list > button {
+  font-size: var(--dashboard-body);
+  line-height: 1.4;
+}
+.owner-simple .vendor-dot,
+.owner-simple .activity-strip span,
+.owner-simple .activity-strip small {
+  font-size: var(--dashboard-meta);
+}
+.owner-simple .activity-strip b {
+  font-size: clamp(20px, 1.8vw, 24px);
+}
+.owner-simple .board-column > header strong {
+  font-size: clamp(15px, 1.2vw, 17px);
+}
+@media (max-width: 760px) {
+  .owner-simple .stock-outlook > header button {
+    white-space: nowrap;
+  }
+  .owner-simple .stock-color-group > header {
+    align-items: flex-start;
+  }
+  .owner-simple .stock-color-group > header span,
+  .owner-simple .stock-color-group > header strong {
+    font-size: 13px;
+  }
+}
 .embedded-qc-master {
   margin-top: 25px;
   padding-top: 22px;

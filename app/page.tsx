@@ -227,6 +227,44 @@ function poLotToken(poId?: string) {
 function shortBundleCode(bundleId?: string) {
   return bundleId?.match(/B\d{3}$/)?.[0] ?? bundleId ?? "—";
 }
+function compareSizes(a: string, b: string) {
+  const normalize = (size: string) => {
+      const compact = size.trim().toUpperCase().replace(/\s+/g, ""),
+        aliases: Record<string, string> = {
+          "2XL": "XXL",
+          XXXL: "3XL",
+          XXXXL: "4XL",
+          XXXXXL: "5XL",
+        };
+      return aliases[compact] ?? compact;
+    },
+    order = [
+      "XXS",
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL",
+      "XXL",
+      "3XL",
+      "4XL",
+      "5XL",
+      "6XL",
+    ],
+    normalizedA = normalize(a),
+    normalizedB = normalize(b),
+    rankA = order.indexOf(normalizedA),
+    rankB = order.indexOf(normalizedB);
+  if (rankA !== -1 || rankB !== -1) {
+    if (rankA === -1) return 1;
+    if (rankB === -1) return -1;
+    return rankA - rankB;
+  }
+  return normalizedA.localeCompare(normalizedB, "id", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
 type AppData = {
   dataVersion: number;
   models: Model[];
@@ -4717,9 +4755,9 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
       }),
       colorGroups = [...new Set(variants.map((variant) => variant.color))].map(
         (color) => {
-          const colorVariants = variants.filter(
-              (variant) => variant.color === color,
-            ),
+          const colorVariants = variants
+              .filter((variant) => variant.color === color)
+              .sort((a, b) => compareSizes(a.size, b.size)),
             sum = (field: keyof (typeof colorVariants)[number]) =>
               colorVariants.reduce((total, variant) => {
                 const value = variant[field];
@@ -4800,7 +4838,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
             <small>masih berpotensi lolos</small>
           </article>
           <article className="forecast">
-            <span>PROYEKSI MAKSIMUM</span>
+            <span>POTENSI STOK AKHIR</span>
             <b>{projectedMaximum}</b>
             <small>aktual + {futurePotential} potensi</small>
           </article>
@@ -4813,7 +4851,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
             <span>BELUM QC</span>
             <span>PRODUKSI</span>
             <span>REPAIR</span>
-            <span>PROYEKSI</span>
+            <span>POTENSI AKHIR</span>
           </div>
           {stockOutlook.length === 0 ? (
             <p className="stock-outlook-empty">
@@ -4859,7 +4897,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
                       <span>BELUM QC</span>
                       <span>PRODUKSI</span>
                       <span>REPAIR</span>
-                      <span>PROYEKSI</span>
+                      <span>POTENSI AKHIR</span>
                     </div>
                     {model.colorGroups.map((group) => (
                       <section
@@ -4871,7 +4909,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
                             <i aria-hidden="true" />
                             <b>{group.color}</b>
                           </span>
-                          <strong>{group.projected} unit proyeksi</strong>
+                          <strong>{group.projected} unit potensi akhir</strong>
                         </header>
                         {group.variants.map((variant) => (
                           <div
@@ -4896,8 +4934,8 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
           )}
         </div>
         <footer>
-          Potensi produksi belum dikurangi kemungkinan reject. Barang reject
-          tidak masuk proyeksi.
+          Potensi stok akhir belum dikurangi kemungkinan reject. Barang reject
+          tidak masuk potensi stok akhir.
         </footer>
       </section>
       <section className="owner-activity">
