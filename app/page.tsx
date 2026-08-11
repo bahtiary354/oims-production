@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
 
 const stages = [
   "Order Produksi",
@@ -226,6 +226,50 @@ function poLotToken(poId?: string) {
 }
 function shortBundleCode(bundleId?: string) {
   return bundleId?.match(/B\d{3}$/)?.[0] ?? bundleId ?? "—";
+}
+function variantColorStyle(color: string): CSSProperties {
+  const normalized = color.trim().toUpperCase();
+  const known: Record<string, string> = {
+    HITAM: "#252b36",
+    BLACK: "#252b36",
+    MOCCA: "#9a735d",
+    MOCHA: "#9a735d",
+    BURGUNDY: "#842f46",
+    MAROON: "#842f46",
+    OLIVE: "#74764c",
+    NAVY: "#324a73",
+    BIRU: "#3976b8",
+    BLUE: "#3976b8",
+    MERAH: "#bf3f48",
+    RED: "#bf3f48",
+    HIJAU: "#3f805f",
+    GREEN: "#3f805f",
+    CREAM: "#c7aa72",
+    KREM: "#c7aa72",
+    COKLAT: "#795442",
+    BROWN: "#795442",
+    ABU: "#7b8491",
+    GREY: "#7b8491",
+    GRAY: "#7b8491",
+    PUTIH: "#9aa4b2",
+    WHITE: "#9aa4b2",
+    KUNING: "#c99a18",
+    YELLOW: "#c99a18",
+  };
+  const palette = [
+    "#5b78b8",
+    "#8d5ea7",
+    "#468477",
+    "#b26359",
+    "#8a704b",
+    "#5c7f9c",
+  ];
+  const hash = [...normalized].reduce((n, char) => n + char.charCodeAt(0), 0);
+  const base = known[normalized] ?? palette[hash % palette.length];
+  return {
+    "--variant-color": base,
+    "--variant-soft": `${base}14`,
+  } as CSSProperties;
 }
 type AppData = {
   dataVersion: number;
@@ -4869,12 +4913,16 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
                       <span>REPAIR</span>
                       <span>PROYEKSI</span>
                     </div>
-                    {model.variants.map((variant) => (
+                    {model.variants.map((variant, index) => (
                       <div
-                        className="stock-variant-row"
+                        className={`stock-variant-row ${index === 0 || model.variants[index - 1]?.color !== variant.color ? "color-start" : ""}`}
                         key={`${variant.color}-${variant.size}`}
+                        style={variantColorStyle(variant.color)}
                       >
-                        <span>{variant.color}</span>
+                        <span className="stock-color">
+                          <i aria-hidden="true" />
+                          {variant.color}
+                        </span>
                         <b>{variant.size}</b>
                         <span>{variant.actual}</span>
                         <span>{variant.ready}</span>
