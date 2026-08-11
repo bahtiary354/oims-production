@@ -89,10 +89,14 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /stockOutlook/);
   assert.match(page, /traceStockVendor/);
   assert.match(page, /variantColorStyle/);
+  assert.match(page, /--variant-foreground/);
+  assert.match(page, /red \* 299 \+ green \* 587 \+ blue \* 114/);
   assert.match(page, /className="stock-color"/);
   assert.match(page, /const boardCards = cards\.filter/);
   assert.match(css, /--variant-color/);
   assert.match(css, /stock-variant-row\.color-start/);
+  assert.match(css, /background:\s*var\(--variant-color\)/);
+  assert.match(css, /font-size:\s*16px/);
   assert.match(page, /Isi seluruh sisa setoran/);
   assert.match(page, /Lolos semua/);
   assert.match(css, /2026 visual refresh/);

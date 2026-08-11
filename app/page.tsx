@@ -266,9 +266,15 @@ function variantColorStyle(color: string): CSSProperties {
   ];
   const hash = [...normalized].reduce((n, char) => n + char.charCodeAt(0), 0);
   const base = known[normalized] ?? palette[hash % palette.length];
+  const red = Number.parseInt(base.slice(1, 3), 16),
+    green = Number.parseInt(base.slice(3, 5), 16),
+    blue = Number.parseInt(base.slice(5, 7), 16),
+    isLight = red * 299 + green * 587 + blue * 114 > 155000,
+    foreground = isLight ? "#172033" : "#ffffff";
   return {
     "--variant-color": base,
-    "--variant-soft": `${base}14`,
+    "--variant-foreground": foreground,
+    "--variant-border": isLight ? "#17203345" : "#ffffff55",
   } as CSSProperties;
 }
 type AppData = {
