@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const stages = [
   "Order Produksi",
@@ -226,56 +226,6 @@ function poLotToken(poId?: string) {
 }
 function shortBundleCode(bundleId?: string) {
   return bundleId?.match(/B\d{3}$/)?.[0] ?? bundleId ?? "—";
-}
-function variantColorStyle(color: string): CSSProperties {
-  const normalized = color.trim().toUpperCase();
-  const known: Record<string, string> = {
-    HITAM: "#252b36",
-    BLACK: "#252b36",
-    MOCCA: "#9a735d",
-    MOCHA: "#9a735d",
-    BURGUNDY: "#842f46",
-    MAROON: "#842f46",
-    OLIVE: "#74764c",
-    NAVY: "#324a73",
-    BIRU: "#3976b8",
-    BLUE: "#3976b8",
-    MERAH: "#bf3f48",
-    RED: "#bf3f48",
-    HIJAU: "#3f805f",
-    GREEN: "#3f805f",
-    CREAM: "#c7aa72",
-    KREM: "#c7aa72",
-    COKLAT: "#795442",
-    BROWN: "#795442",
-    ABU: "#7b8491",
-    GREY: "#7b8491",
-    GRAY: "#7b8491",
-    PUTIH: "#9aa4b2",
-    WHITE: "#9aa4b2",
-    KUNING: "#c99a18",
-    YELLOW: "#c99a18",
-  };
-  const palette = [
-    "#5b78b8",
-    "#8d5ea7",
-    "#468477",
-    "#b26359",
-    "#8a704b",
-    "#5c7f9c",
-  ];
-  const hash = [...normalized].reduce((n, char) => n + char.charCodeAt(0), 0);
-  const base = known[normalized] ?? palette[hash % palette.length];
-  const red = Number.parseInt(base.slice(1, 3), 16),
-    green = Number.parseInt(base.slice(3, 5), 16),
-    blue = Number.parseInt(base.slice(5, 7), 16),
-    isLight = red * 299 + green * 587 + blue * 114 > 155000,
-    foreground = isLight ? "#172033" : "#ffffff";
-  return {
-    "--variant-color": base,
-    "--variant-foreground": foreground,
-    "--variant-border": isLight ? "#17203345" : "#ffffff55",
-  } as CSSProperties;
 }
 type AppData = {
   dataVersion: number;
@@ -4772,6 +4722,28 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
           projected: actual + ready + awaiting + production + repair,
         };
       }),
+      colorGroups = [...new Set(variants.map((variant) => variant.color))].map(
+        (color) => {
+          const colorVariants = variants.filter(
+              (variant) => variant.color === color,
+            ),
+            sum = (field: keyof (typeof colorVariants)[number]) =>
+              colorVariants.reduce((total, variant) => {
+                const value = variant[field];
+                return total + (typeof value === "number" ? value : 0);
+              }, 0);
+          return {
+            color,
+            variants: colorVariants,
+            actual: sum("actual"),
+            ready: sum("ready"),
+            awaiting: sum("awaiting"),
+            production: sum("production"),
+            repair: sum("repair"),
+            projected: sum("projected"),
+          };
+        },
+      ),
       vendorMap = new Map<string, number>();
     for (const row of actualRows) {
       const vendor = traceStockVendor(row);
@@ -4794,6 +4766,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
       repair,
       projected: actual + ready + awaiting + production + repair,
       variants,
+      colorGroups,
       vendors: [...vendorMap.entries()],
     };
   });
@@ -4910,7 +4883,6 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
                       </p>
                     )}
                     <div className="stock-variant-head">
-                      <span>WARNA</span>
                       <span>SIZE</span>
                       <span>AKTUAL</span>
                       <span>SIAP</span>
@@ -4919,24 +4891,33 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
                       <span>REPAIR</span>
                       <span>PROYEKSI</span>
                     </div>
-                    {model.variants.map((variant, index) => (
-                      <div
-                        className={`stock-variant-row ${index === 0 || model.variants[index - 1]?.color !== variant.color ? "color-start" : ""}`}
-                        key={`${variant.color}-${variant.size}`}
-                        style={variantColorStyle(variant.color)}
+                    {model.colorGroups.map((group) => (
+                      <section
+                        className="stock-color-group"
+                        key={group.color}
                       >
-                        <span className="stock-color">
-                          <i aria-hidden="true" />
-                          {variant.color}
-                        </span>
-                        <b>{variant.size}</b>
-                        <span>{variant.actual}</span>
-                        <span>{variant.ready}</span>
-                        <span>{variant.awaiting}</span>
-                        <span>{variant.production}</span>
-                        <span>{variant.repair}</span>
-                        <strong>{variant.projected}</strong>
-                      </div>
+                        <header>
+                          <span>
+                            <i aria-hidden="true" />
+                            <b>{group.color}</b>
+                          </span>
+                          <strong>{group.projected} unit proyeksi</strong>
+                        </header>
+                        {group.variants.map((variant) => (
+                          <div
+                            className="stock-variant-row"
+                            key={`${variant.color}-${variant.size}`}
+                          >
+                            <b>{variant.size}</b>
+                            <span>{variant.actual}</span>
+                            <span>{variant.ready}</span>
+                            <span>{variant.awaiting}</span>
+                            <span>{variant.production}</span>
+                            <span>{variant.repair}</span>
+                            <strong>{variant.projected}</strong>
+                          </div>
+                        ))}
+                      </section>
                     ))}
                   </div>
                 )}
