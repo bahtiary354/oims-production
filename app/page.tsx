@@ -5855,6 +5855,61 @@ function StagePage({
           ))}
         </div>
       )}
+      {active === "Bundle" && rows.length > 0 && (
+        <section className="bundle-print-panel">
+          <header>
+            <div>
+              <small>KARTU IDENTITAS BUNDLE</small>
+              <h2>Cetak kartu thermal</h2>
+              <span>
+                Pilih bundle lalu cetak tanpa perlu menggeser tabel transaksi.
+              </span>
+            </div>
+            <b>{rows.length} bundle</b>
+          </header>
+          <div className="bundle-print-grid">
+            {rows.map((bundle) => (
+              <article key={bundle.id}>
+                <header>
+                  <div>
+                    <strong>{shortBundleCode(bundle.id)}</strong>
+                    <small>{bundle.id}</small>
+                  </div>
+                  <b>{bundle.total} unit</b>
+                </header>
+                <p>
+                  <b>{bundle.modelName}</b>
+                  <span>
+                    PO {bundle.poId || "—"} · Cutting C
+                    {String(bundle.batchNo ?? 1).padStart(2, "0")}
+                  </span>
+                </p>
+                <div className="bundle-print-variants">
+                  {bundle.variants
+                    .slice()
+                    .sort((a, b) =>
+                      a.color.localeCompare(b.color, "id") ||
+                      compareSizes(a.size, b.size),
+                    )
+                    .map((variant) => (
+                      <span key={`${variant.color}-${variant.size}`}>
+                        {variant.color} · {variant.size}
+                        <b>{variant.qty}</b>
+                      </span>
+                    ))}
+                </div>
+                <button
+                  type="button"
+                  className="bundle-print-button prominent"
+                  onClick={() => onPrintBundle(bundle)}
+                >
+                  ▣ Cetak Kartu Bundle
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       {active === "Bundle" && completedBundleCards.length > 0 && (
         <details className="completed-cuttings">
           <summary>
