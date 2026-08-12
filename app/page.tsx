@@ -1925,6 +1925,33 @@ export default function Home() {
     setMatrix(variants);
     setForm({ ...form, sourceId: ids[0] ?? "", code: clicked.modelCode });
   }
+  function openBundleShipment(ids: string[]) {
+    const bundles = (data.records.Bundle ?? []).filter(
+      (bundle) =>
+        ids.includes(bundle.id) &&
+        sourceAvailable("Pengiriman Vendor", bundle),
+    );
+    if (!bundles.length) {
+      flash("Pilih minimal satu bundle yang belum dikirim.");
+      return;
+    }
+    const modelCode = bundles[0].modelCode;
+    if (bundles.some((bundle) => bundle.modelCode !== modelCode)) {
+      flash("Bundle yang dikirim bersamaan harus berasal dari model yang sama.");
+      return;
+    }
+    setActive("Pengiriman Vendor");
+    setSelectedBundleIds(bundles.map((bundle) => bundle.id));
+    setMatrix(mergeVariants(bundles));
+    setForm({
+      ...emptyForm,
+      date: new Date().toISOString().slice(0, 10),
+      code: modelCode,
+      sourceId: bundles[0].id,
+      officer: data.pics.find((pic) => pic.active)?.name ?? "",
+    });
+    setModal("record");
+  }
   function updateQty(color: string, size: string, value: number) {
     const qty = Math.max(0, value || 0);
     setMatrix((m) =>
@@ -2880,6 +2907,7 @@ export default function Home() {
                     }
                     onAdd={openRecord}
                     onPrintBundle={setBundlePrint}
+                    onSendBundles={openBundleShipment}
                   />
                   {(active === "Quality Control" || active === "QC Ulang") && (
                     <QCSummary rows={current} allRecords={data.records} />
@@ -5476,6 +5504,7 @@ function StagePage({
   sourceCount,
   onAdd,
   onPrintBundle,
+  onSendBundles,
 }: {
   active: string;
   rows: RecordRow[];
@@ -5484,7 +5513,17 @@ function StagePage({
   sourceCount: number;
   onAdd: () => void;
   onPrintBundle: (bundle: RecordRow) => void;
+  onSendBundles: (bundleIds: string[]) => void;
 }) {
+  const [bundleQuery, setBundleQuery] = useState("");
+  const [bundleStatus, setBundleStatus] = useState<"ready" | "sent" | "all">(
+    "ready",
+  );
+  const [bundlePeriod, setBundlePeriod] = useState<
+    "all" | "today" | "week" | "month"
+  >("all");
+  const [selectedOperationalBundles, setSelectedOperationalBundles] =
+    useState<string[]>([]);
   const info = stageInfo[active];
   const blocked = !!info.source && sourceCount === 0;
   const poCutBalance = (po: RecordRow) =>
@@ -5516,11 +5555,58 @@ function StagePage({
           };
         })
       : [];
-  const activeBundleCards = bundleCards.filter((x) => x.left > 0);
-  const completedBundleCards = bundleCards.filter((x) => x.left === 0);
   const shippedIds = new Set(
     (allRecords["Pengiriman Vendor"] ?? []).map((x) => x.sourceId),
   );
+  const now = new Date(),
+    todayString = now.toISOString().slice(0, 10),
+    weekStartDate = new Date(now);
+  weekStartDate.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const weekStartString = weekStartDate.toISOString().slice(0, 10),
+    monthStartString = `${todayString.slice(0, 8)}01`,
+    bundleMatchesPeriod = (bundle: RecordRow) => {
+      if (bundlePeriod === "today") return bundle.date === todayString;
+      if (bundlePeriod === "week") return bundle.date >= weekStartString;
+      if (bundlePeriod === "month") return bundle.date >= monthStartString;
+      return true;
+    },
+    operationalBundles =
+      active === "Bundle"
+        ? rows.filter((bundle) => {
+            const sent = shippedIds.has(bundle.id),
+              matchesStatus =
+                bundleStatus === "all" ||
+                (bundleStatus === "ready" ? !sent : sent),
+              searchable = [
+                bundle.id,
+                bundle.poId,
+                bundle.sourceId,
+                bundle.modelCode,
+                bundle.modelName,
+                bundle.officer,
+                ...bundle.variants.flatMap((variant) => [
+                  variant.color,
+                  variant.size,
+                ]),
+              ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+            return (
+              matchesStatus &&
+              bundleMatchesPeriod(bundle) &&
+              searchable.includes(bundleQuery.trim().toLowerCase())
+            );
+          })
+        : [],
+    selectedBundleRows = rows.filter((bundle) =>
+      selectedOperationalBundles.includes(bundle.id),
+    ),
+    selectedBundleModel = selectedBundleRows[0]?.modelCode,
+    selectedBundleUnits = selectedBundleRows.reduce(
+      (total, bundle) => total + bundle.total,
+      0,
+    );
   const availableToShip =
     active === "Pengiriman Vendor"
       ? sources.filter((x) => !shippedIds.has(x.id)).length
@@ -5827,54 +5913,103 @@ function StagePage({
           </div>
         </details>
       )}
-      {active === "Bundle" && activeBundleCards.length > 0 && (
-        <div className="bundle-balance">
-          {activeBundleCards.map((x) => (
-            <article key={x.source.id}>
-              <div>
-                <span>CUTTING SUMBER</span>
-                <b>{x.source.id}</b>
-                <small>{x.source.modelName}</small>
-              </div>
-              <div>
-                <span>HASIL CUTTING</span>
-                <b>{x.source.total}</b>
-                <small>unit</small>
-              </div>
-              <div>
-                <span>SUDAH DIBUNDLE</span>
-                <b>{x.used}</b>
-                <small>{x.count} bundle</small>
-              </div>
-              <div>
-                <span>SISA BELUM DIBUNDLE</span>
-                <b>{x.left}</b>
-                <small>unit tersedia</small>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-      {active === "Bundle" && rows.length > 0 && (
-        <section className="bundle-print-panel">
+      {active === "Bundle" && (
+        <section className="bundle-print-panel bundle-operations">
           <header>
             <div>
-              <small>KARTU IDENTITAS BUNDLE</small>
-              <h2>Cetak kartu thermal</h2>
+              <small>BUNDLE OPERASIONAL</small>
+              <h2>Siap cetak dan kirim</h2>
               <span>
-                Pilih bundle lalu cetak tanpa perlu menggeser tabel transaksi.
+                Satu kartu untuk melihat isi, mencetak, dan melanjutkan ke
+                vendor.
               </span>
             </div>
-            <b>{rows.length} bundle</b>
+            <b>{operationalBundles.length} bundle tampil</b>
           </header>
-          <div className="bundle-print-grid">
-            {rows.map((bundle) => (
-              <article key={bundle.id}>
+          <div className="bundle-operation-tools">
+            <label className="bundle-search">
+              <span>⌕</span>
+              <input
+                type="search"
+                placeholder="Cari PO, cutting, bundle, model, warna, size, PIC..."
+                value={bundleQuery}
+                onChange={(event) => setBundleQuery(event.target.value)}
+              />
+            </label>
+            <select
+              aria-label="Status bundle"
+              value={bundleStatus}
+              onChange={(event) => {
+                setBundleStatus(
+                  event.target.value as "ready" | "sent" | "all",
+                );
+                setSelectedOperationalBundles([]);
+              }}
+            >
+              <option value="ready">Belum dikirim</option>
+              <option value="sent">Sudah dikirim</option>
+              <option value="all">Semua status</option>
+            </select>
+            <select
+              aria-label="Rentang waktu bundle"
+              value={bundlePeriod}
+              onChange={(event) =>
+                setBundlePeriod(
+                  event.target.value as "all" | "today" | "week" | "month",
+                )
+              }
+            >
+              <option value="all">Semua waktu</option>
+              <option value="today">Hari ini</option>
+              <option value="week">Minggu ini</option>
+              <option value="month">Bulan ini</option>
+            </select>
+          </div>
+          {operationalBundles.length === 0 ? (
+            <div className="bundle-operation-empty">
+              <b>Tidak ada bundle sesuai filter</b>
+              <span>
+                Ubah pencarian, status, atau rentang waktu untuk melihat data
+                lainnya.
+              </span>
+            </div>
+          ) : (
+            <div className="bundle-print-grid">
+              {operationalBundles.map((bundle) => {
+                const sent = shippedIds.has(bundle.id),
+                  selected = selectedOperationalBundles.includes(bundle.id),
+                  incompatible =
+                    !!selectedBundleModel &&
+                    selectedBundleModel !== bundle.modelCode;
+                return (
+                  <article
+                    className={selected ? "selected" : ""}
+                    key={bundle.id}
+                  >
                 <header>
-                  <div>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={sent || incompatible}
+                      title={
+                        incompatible
+                          ? "Pilih bundle dari model yang sama"
+                          : undefined
+                      }
+                      onChange={() =>
+                        setSelectedOperationalBundles((current) =>
+                          current.includes(bundle.id)
+                            ? current.filter((id) => id !== bundle.id)
+                            : [...current, bundle.id],
+                        )
+                      }
+                    />
+                    <div>
                     <strong>{shortBundleCode(bundle.id)}</strong>
                     <small>{bundle.id}</small>
-                  </div>
+                    </div>
+                  </label>
                   <b>{bundle.total} unit</b>
                 </header>
                 <p>
@@ -5884,6 +6019,9 @@ function StagePage({
                     {String(bundle.batchNo ?? 1).padStart(2, "0")}
                   </span>
                 </p>
+                <span className={`bundle-operation-status ${sent ? "sent" : "ready"}`}>
+                  {sent ? "✓ Sudah dikirim" : "● Siap dikirim"}
+                </span>
                 <div className="bundle-print-variants">
                   {bundle.variants
                     .slice()
@@ -5906,31 +6044,27 @@ function StagePage({
                   ▣ Cetak Kartu Bundle
                 </button>
               </article>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
+          {selectedBundleRows.length > 0 && (
+            <div className="bundle-selection-bar">
+              <div>
+                <b>{selectedBundleRows.length} bundle dipilih</b>
+                <span>{selectedBundleUnits} unit · model sama</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onSendBundles(selectedOperationalBundles)}
+              >
+                Kirim ke Vendor →
+              </button>
+            </div>
+          )}
         </section>
       )}
-      {active === "Bundle" && completedBundleCards.length > 0 && (
-        <details className="completed-cuttings">
-          <summary>
-            <span>✓</span>
-            <b>{completedBundleCards.length} cutting selesai dibundle</b>
-            <small>Saldo nol · klik untuk melihat nomor cutting</small>
-          </summary>
-          <div>
-            {completedBundleCards.map((x) => (
-              <p key={x.source.id}>
-                <b>{x.source.id}</b>
-                <span>{x.source.modelName}</span>
-                <em>
-                  {x.source.total} unit · {x.count} bundle
-                </em>
-              </p>
-            ))}
-          </div>
-        </details>
-      )}
-      <section
+      {active !== "Bundle" && <section
         className={`panel table-panel ${active === "Bundle" ? "bounded-table" : ""}`}
       >
         {rows.length === 0 ? (
@@ -6004,7 +6138,7 @@ function StagePage({
             </table>
           </div>
         )}
-      </section>
+      </section>}
     </>
   );
 }
