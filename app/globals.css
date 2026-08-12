@@ -5050,19 +5050,110 @@ body {
     min-width: 145px;
   }
   .stock-outlook-table {
-    overflow-x: auto;
-    padding: 0 10px 10px;
+    overflow: visible;
+    padding: 8px 10px 10px;
   }
-  .stock-table-head,
+  .stock-table-head {
+    display: none;
+  }
+  .stock-model {
+    width: 100%;
+    overflow: visible;
+    border: 1px solid #e1e7f0;
+    border-radius: 10px;
+    margin-bottom: 8px;
+  }
   .stock-model-row {
-    min-width: 720px;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px 6px;
+    padding: 11px;
+  }
+  .stock-model-row > span:first-child {
+    grid-column: 1 / -1;
+    padding-bottom: 7px;
+    border-bottom: 1px solid #edf1f6;
+  }
+  .stock-model-row > strong {
+    min-width: 0;
+    text-align: left;
+    font-size: 13px;
+  }
+  .stock-model-row > strong::before {
+    display: block;
+    margin-bottom: 3px;
+    color: #8a94a3;
+    font-size: 7px;
+    font-weight: 800;
+    letter-spacing: .04em;
+  }
+  .stock-model-row > strong:nth-of-type(1)::before { content: "AKTUAL"; }
+  .stock-model-row > strong:nth-of-type(2)::before { content: "SIAP"; }
+  .stock-model-row > strong:nth-of-type(3)::before { content: "BELUM QC"; }
+  .stock-model-row > strong:nth-of-type(4)::before { content: "PRODUKSI"; }
+  .stock-model-row > strong:nth-of-type(5)::before { content: "REPAIR"; }
+  .stock-model-row > strong:nth-of-type(6)::before { content: "PROYEKSI"; }
+  .stock-model-row > strong.projected {
+    font-size: 14px;
   }
   .stock-model-detail {
-    min-width: 720px;
+    min-width: 0;
+    padding: 8px;
+    border-top: 1px solid #e1e7f0;
   }
   .stock-variant-head,
   .stock-variant-row {
-    min-width: 690px;
+    min-width: 0;
+    grid-template-columns: 42px repeat(6, minmax(0, 1fr));
+    gap: 3px;
+  }
+  .stock-variant-head {
+    padding: 6px 4px;
+    font-size: 6px;
+    letter-spacing: 0;
+  }
+  .stock-variant-row {
+    min-height: 36px;
+    padding: 6px 5px;
+    border-radius: 7px;
+    font-size: 10px;
+  }
+  .stock-variant-row > b,
+  .stock-variant-row > span,
+  .stock-variant-row > strong {
+    font-size: 10px;
+  }
+  .stock-color-group {
+    flex: 0 0 100%;
+    min-width: 0;
+    margin-top: 7px;
+    padding: 4px;
+    border-radius: 9px;
+    scroll-snap-align: start;
+  }
+  .stock-color-groups {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: thin;
+  }
+  .stock-color-group > header {
+    padding: 6px;
+  }
+  .stock-color-group > header span {
+    font-size: 10px;
+  }
+  .stock-color-group > header strong {
+    font-size: 9px;
+  }
+  .stock-vendors {
+    line-height: 1.4;
+  }
+  .stock-outlook > footer {
+    font-size: 7px;
   }
 }
 .quick-fill {

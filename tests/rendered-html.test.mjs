@@ -173,6 +173,11 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Perbarui pembayaran/);
   assert.match(css, /\.receipt-payment-list/);
   assert.match(css, /\.receipt-payment-entry/);
+  assert.match(css, /\.stock-model-row > strong:nth-of-type\(6\)::before/);
+  assert.match(css, /grid-template-columns:\s*42px repeat\(6, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.stock-table-head\s*\{\s*display:\s*none/);
+  assert.match(page, /className="stock-color-groups"/);
+  assert.match(css, /scroll-snap-type:\s*x mandatory/);
   assert.doesNotMatch(
     page,
     /PO ini sudah dibukukan di Cutting\. Gunakan PO baru/,

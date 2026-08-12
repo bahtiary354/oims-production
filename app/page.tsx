@@ -5188,34 +5188,36 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
                       <span>REPAIR</span>
                       <span>POTENSI AKHIR</span>
                     </div>
-                    {model.colorGroups.map((group) => (
-                      <section
-                        className="stock-color-group"
-                        key={group.color}
-                      >
-                        <header>
-                          <span>
-                            <i aria-hidden="true" />
-                            <b>{group.color}</b>
-                          </span>
-                          <strong>{group.projected} unit potensi akhir</strong>
-                        </header>
-                        {group.variants.map((variant) => (
-                          <div
-                            className="stock-variant-row"
-                            key={`${variant.color}-${variant.size}`}
-                          >
-                            <b>{variant.size}</b>
-                            <span>{variant.actual}</span>
-                            <span>{variant.ready}</span>
-                            <span>{variant.awaiting}</span>
-                            <span>{variant.production}</span>
-                            <span>{variant.repair}</span>
-                            <strong>{variant.projected}</strong>
-                          </div>
-                        ))}
-                      </section>
-                    ))}
+                    <div className="stock-color-groups">
+                      {model.colorGroups.map((group) => (
+                        <section
+                          className="stock-color-group"
+                          key={group.color}
+                        >
+                          <header>
+                            <span>
+                              <i aria-hidden="true" />
+                              <b>{group.color}</b>
+                            </span>
+                            <strong>{group.projected} unit potensi akhir</strong>
+                          </header>
+                          {group.variants.map((variant) => (
+                            <div
+                              className="stock-variant-row"
+                              key={`${variant.color}-${variant.size}`}
+                            >
+                              <b>{variant.size}</b>
+                              <span>{variant.actual}</span>
+                              <span>{variant.ready}</span>
+                              <span>{variant.awaiting}</span>
+                              <span>{variant.production}</span>
+                              <span>{variant.repair}</span>
+                              <strong>{variant.projected}</strong>
+                            </div>
+                          ))}
+                        </section>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
