@@ -159,6 +159,17 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /PIC \/ Penanggung jawab/);
   assert.match(page, /Pilih PIC/);
   assert.match(page, /deletePIC/);
+  assert.match(page, /Tarif jahit per unit/);
+  assert.match(page, /PEMBAYARAN VENDOR/);
+  assert.match(page, /PEMBAYARAN SETORAN/);
+  assert.match(page, /function paymentStatus/);
+  assert.match(page, /Belum dibayar/);
+  assert.match(page, /DP sebagian/);
+  assert.match(page, /Lunas/);
+  assert.match(page, /updateReceiptPayment/);
+  assert.match(page, /Perbarui pembayaran/);
+  assert.match(css, /\.receipt-payment-list/);
+  assert.match(css, /\.receipt-payment-entry/);
   assert.doesNotMatch(
     page,
     /PO ini sudah dibukukan di Cutting\. Gunakan PO baru/,

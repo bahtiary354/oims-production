@@ -196,6 +196,9 @@ type RecordRow = {
   bundleNo?: number;
   bundleId?: string;
   deliveryNoteId?: string;
+  sewingRate?: number;
+  paidAmount?: number;
+  paymentDate?: string;
 };
 type Note = {
   id: string;
@@ -227,6 +230,18 @@ function poLotToken(poId?: string) {
 }
 function shortBundleCode(bundleId?: string) {
   return bundleId?.match(/B\d{3}$/)?.[0] ?? bundleId ?? "—";
+}
+function rupiah(value: number) {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(value || 0);
+}
+function paymentStatus(bill: number, paid: number) {
+  if (paid <= 0) return "Belum dibayar";
+  if (paid < bill) return "DP sebagian";
+  return "Lunas";
 }
 function compareSizes(a: string, b: string) {
   const normalize = (size: string) => {
@@ -300,6 +315,9 @@ const emptyForm = {
   qcPassed: 0,
   qcReject: 0,
   qcRepair: 0,
+  sewingRate: 0,
+  paidAmount: 0,
+  paymentDate: "",
 };
 const sum = (v: Variant[]) => v.reduce((a, b) => a + b.qty, 0);
 function automaticModelCode(
@@ -1511,6 +1529,9 @@ export default function Home() {
   const [selectedBundleIds, setSelectedBundleIds] = useState<string[]>([]);
   const [print, setPrint] = useState<Note | null>(null);
   const [bundlePrint, setBundlePrint] = useState<RecordRow | null>(null);
+  const [paymentReceipt, setPaymentReceipt] = useState<RecordRow | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState(0);
+  const [paymentDate, setPaymentDate] = useState("");
   const [toast, setToast] = useState("");
   const [query, setQuery] = useState("");
 
@@ -1546,6 +1567,39 @@ export default function Home() {
     } finally {
       setSaving(false);
     }
+  }
+  async function updateReceiptPayment(e: FormEvent) {
+    e.preventDefault();
+    if (!paymentReceipt) return;
+    const shipment = (data.records["Pengiriman Vendor"] ?? []).find(
+        (x) => x.id === paymentReceipt.sourceId,
+      ),
+      bill =
+        paymentReceipt.total *
+        (paymentReceipt.sewingRate ?? shipment?.sewingRate ?? 0);
+    if (paymentAmount < 0 || paymentAmount > bill) {
+      flash("Nominal pembayaran tidak boleh melebihi nilai setoran.");
+      return;
+    }
+    const next = {
+      ...data,
+      records: {
+        ...data.records,
+        "Penerimaan Gudang": (data.records["Penerimaan Gudang"] ?? []).map(
+          (receipt) =>
+            receipt.id === paymentReceipt.id
+              ? {
+                  ...receipt,
+                  paidAmount: paymentAmount,
+                  paymentDate: paymentAmount > 0 ? paymentDate : "",
+                }
+              : receipt,
+        ),
+      },
+    };
+    await persist(next);
+    setPaymentReceipt(null);
+    flash(`Pembayaran ${paymentReceipt.id} diperbarui.`);
   }
   function flash(x: string) {
     setToast(x);
@@ -1876,6 +1930,8 @@ export default function Home() {
           : form.qcPassed,
       qcReject: 0,
       qcRepair: 0,
+      paidAmount: active === "Penerimaan Gudang" ? 0 : form.paidAmount,
+      paymentDate: active === "Penerimaan Gudang" ? "" : form.paymentDate,
     });
     if (source) {
       const available =
@@ -2275,6 +2331,7 @@ export default function Home() {
         bundleNo: bundle.bundleNo,
         bundleId: bundle.id,
         deliveryNoteId,
+        sewingRate: form.sewingRate,
       }));
       const variants = mergeVariants(bundles),
         note: Note = {
@@ -2403,6 +2460,11 @@ export default function Home() {
         (x) => x.id === form.sourceId,
       );
       if (!source) return;
+      const bill = sum(matrix) * (source.sewingRate ?? 0);
+      if (form.paidAmount < 0 || form.paidAmount > bill) {
+        flash("Nominal pembayaran tidak boleh melebihi nilai setoran.");
+        return;
+      }
       const available = remainingAtVendor(source);
       if (
         matrix.some(
@@ -2571,6 +2633,16 @@ export default function Home() {
       bundleNo: active === "Bundle" ? bundleNo : receiptShipment?.bundleNo,
       bundleId: active === "Bundle" ? recordId : inheritedBundleId,
       deliveryNoteId: receiptShipment?.deliveryNoteId,
+      sewingRate:
+        active === "Penerimaan Gudang"
+          ? receiptShipment?.sewingRate
+          : form.sewingRate || recordSource?.sewingRate,
+      paidAmount:
+        active === "Penerimaan Gudang" ? form.paidAmount : undefined,
+      paymentDate:
+        active === "Penerimaan Gudang" && form.paidAmount > 0
+          ? form.paymentDate || form.date
+          : undefined,
     };
     let records = {
       ...data.records,
@@ -2908,6 +2980,14 @@ export default function Home() {
                     onAdd={openRecord}
                     onPrintBundle={setBundlePrint}
                     onSendBundles={openBundleShipment}
+                    onUpdatePayment={(receipt) => {
+                      setPaymentReceipt(receipt);
+                      setPaymentAmount(receipt.paidAmount ?? 0);
+                      setPaymentDate(
+                        receipt.paymentDate ??
+                          new Date().toISOString().slice(0, 10),
+                      );
+                    }}
                   />
                   {(active === "Quality Control" || active === "QC Ulang") && (
                     <QCSummary rows={current} allRecords={data.records} />
@@ -3397,6 +3477,26 @@ export default function Home() {
                   </select>
                 </label>
               )}
+              {active === "Pengiriman Vendor" && (
+                <label>
+                  Tarif jahit per unit
+                  <input
+                    required
+                    min="1"
+                    type="number"
+                    inputMode="numeric"
+                    value={form.sewingRate}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        sewingRate: Math.max(0, Number(e.target.value) || 0),
+                      })
+                    }
+                    placeholder="Contoh: 45000"
+                  />
+                  <small>Tarif ini tersimpan untuk pengiriman ini.</small>
+                </label>
+              )}
             </div>
             {active === "Cutting" && form.sourceId && (
               <button
@@ -3548,6 +3648,65 @@ export default function Home() {
                 ✓ Isi seluruh sisa setoran
               </button>
             )}
+            {active === "Penerimaan Gudang" && form.sourceId && (() => {
+              const shipment = (data.records["Pengiriman Vendor"] ?? []).find(
+                  (x) => x.id === form.sourceId,
+                ),
+                rate = shipment?.sewingRate ?? 0,
+                bill = sum(matrix) * rate,
+                status = paymentStatus(bill, form.paidAmount);
+              return (
+                <div className="receipt-payment-entry">
+                  <header>
+                    <div>
+                      <small>PEMBAYARAN VENDOR</small>
+                      <b>{status}</b>
+                    </div>
+                    <strong>{rupiah(bill)}</strong>
+                  </header>
+                  <div>
+                    <p>
+                      <span>Tarif jahit</span>
+                      <b>{rupiah(rate)} / unit</b>
+                    </p>
+                    <label>
+                      Total sudah dibayar
+                      <input
+                        min="0"
+                        max={bill}
+                        type="number"
+                        inputMode="numeric"
+                        value={form.paidAmount}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            paidAmount: Math.max(
+                              0,
+                              Number(e.target.value) || 0,
+                            ),
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Tanggal pembayaran
+                      <input
+                        type="date"
+                        required={form.paidAmount > 0}
+                        disabled={form.paidAmount <= 0}
+                        value={form.paymentDate}
+                        onChange={(e) =>
+                          setForm({ ...form, paymentDate: e.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <footer>
+                    Sisa pembayaran <b>{rupiah(Math.max(0, bill - form.paidAmount))}</b>
+                  </footer>
+                </div>
+              );
+            })()}
             {active === "Penerimaan Gudang" &&
               form.sourceId &&
               (() => {
@@ -3793,6 +3952,76 @@ export default function Home() {
           </form>
         </div>
       )}
+      {paymentReceipt && (() => {
+        const shipment = (data.records["Pengiriman Vendor"] ?? []).find(
+            (x) => x.id === paymentReceipt.sourceId,
+          ),
+          rate = paymentReceipt.sewingRate ?? shipment?.sewingRate ?? 0,
+          bill = paymentReceipt.total * rate,
+          status = paymentStatus(bill, paymentAmount);
+        return (
+          <div className="overlay">
+            <form
+              className="form-modal payment-modal"
+              onSubmit={updateReceiptPayment}
+            >
+              <button
+                className="close"
+                type="button"
+                onClick={() => setPaymentReceipt(null)}
+              >
+                ×
+              </button>
+              <p className="overline">PEMBAYARAN VENDOR</p>
+              <h2>Perbarui Pembayaran Setoran</h2>
+              <div className="payment-modal-summary">
+                <p><span>Penerimaan</span><b>{paymentReceipt.id}</b></p>
+                <p><span>Vendor</span><b>{shipment?.destination || "—"}</b></p>
+                <p><span>Model</span><b>{paymentReceipt.modelName}</b></p>
+                <p><span>Setoran</span><b>{paymentReceipt.total} unit</b></p>
+                <p><span>Tarif</span><b>{rupiah(rate)} / unit</b></p>
+                <p><span>Total tagihan</span><b>{rupiah(bill)}</b></p>
+              </div>
+              <div className="field-grid">
+                <label>
+                  Total sudah dibayar
+                  <input
+                    autoFocus
+                    min="0"
+                    max={bill}
+                    type="number"
+                    inputMode="numeric"
+                    value={paymentAmount}
+                    onChange={(e) =>
+                      setPaymentAmount(Math.max(0, Number(e.target.value) || 0))
+                    }
+                  />
+                </label>
+                <label>
+                  Tanggal pembayaran
+                  <input
+                    type="date"
+                    required={paymentAmount > 0}
+                    disabled={paymentAmount <= 0}
+                    value={paymentDate}
+                    onChange={(e) => setPaymentDate(e.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="payment-modal-status">
+                <p><span>Status otomatis</span><b>{status}</b></p>
+                <p><span>Sisa pembayaran</span><strong>{rupiah(Math.max(0, bill - paymentAmount))}</strong></p>
+              </div>
+              <div className="form-actions">
+                <button type="button" onClick={() => setPaymentReceipt(null)}>
+                  Batal
+                </button>
+                <button className="primary">Simpan pembayaran</button>
+              </div>
+            </form>
+          </div>
+        );
+      })()}
       {print && <PrintNote note={print} close={() => setPrint(null)} />}
       {bundlePrint && (
         <BundleLabel
@@ -5505,6 +5734,7 @@ function StagePage({
   onAdd,
   onPrintBundle,
   onSendBundles,
+  onUpdatePayment,
 }: {
   active: string;
   rows: RecordRow[];
@@ -5514,6 +5744,7 @@ function StagePage({
   onAdd: () => void;
   onPrintBundle: (bundle: RecordRow) => void;
   onSendBundles: (bundleIds: string[]) => void;
+  onUpdatePayment: (receipt: RecordRow) => void;
 }) {
   const [bundleQuery, setBundleQuery] = useState("");
   const [bundleStatus, setBundleStatus] = useState<"ready" | "sent" | "all">(
@@ -5912,6 +6143,65 @@ function StagePage({
             ))}
           </div>
         </details>
+      )}
+      {active === "Penerimaan Gudang" && rows.length > 0 && (
+        <section className="receipt-payment-list">
+          <header>
+            <div>
+              <small>PEMBAYARAN SETORAN</small>
+              <h2>Tagihan jahit vendor</h2>
+              <span>Pembayaran mengikuti jumlah yang diterima gudang.</span>
+            </div>
+            <b>{rows.length} setoran</b>
+          </header>
+          <div className="receipt-payment-cards">
+            {rows.map((receipt) => {
+              const shipment = (allRecords["Pengiriman Vendor"] ?? []).find(
+                  (x) => x.id === receipt.sourceId,
+                ),
+                rate = receipt.sewingRate ?? shipment?.sewingRate ?? 0,
+                bill = receipt.total * rate,
+                paid = receipt.paidAmount ?? 0,
+                status = paymentStatus(bill, paid),
+                statusClass =
+                  status === "Lunas"
+                    ? "paid"
+                    : status === "DP sebagian"
+                      ? "partial"
+                      : "unpaid";
+              return (
+                <article key={receipt.id}>
+                  <header>
+                    <div>
+                      <b>{shipment?.destination || "Vendor tidak ditemukan"}</b>
+                      <span>{receipt.id} · {receipt.modelName}</span>
+                    </div>
+                    <em className={statusClass}>{status}</em>
+                  </header>
+                  <div>
+                    <p><span>Setoran</span><b>{receipt.total} unit</b></p>
+                    <p><span>Tarif</span><b>{rupiah(rate)}</b></p>
+                    <p><span>Tagihan</span><b>{rupiah(bill)}</b></p>
+                    <p><span>Sudah dibayar</span><b>{rupiah(paid)}</b></p>
+                    <p><span>Sisa</span><strong>{rupiah(Math.max(0, bill - paid))}</strong></p>
+                  </div>
+                  <footer>
+                    <span>
+                      {paid > 0 && receipt.paymentDate
+                        ? `Pembayaran terakhir ${receipt.paymentDate}`
+                        : rate > 0
+                          ? "Belum ada pembayaran"
+                          : "Tarif belum dicatat pada pengiriman"}
+                    </span>
+                    <button type="button" onClick={() => onUpdatePayment(receipt)}>
+                      Perbarui pembayaran
+                    </button>
+                  </footer>
+                </article>
+              );
+            })}
+          </div>
+        </section>
       )}
       {active === "Bundle" && (
         <section className="bundle-print-panel bundle-operations">

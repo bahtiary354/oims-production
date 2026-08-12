@@ -948,6 +948,184 @@ td button {
   }
 }
 
+/* Vendor sewing payments stay attached to warehouse receipts. */
+.receipt-payment-entry {
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid #d9e3f3;
+  border-radius: 12px;
+  background: #f7f9fd;
+}
+.receipt-payment-entry > header,
+.receipt-payment-entry > header > div,
+.receipt-payment-entry footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.receipt-payment-entry > header small,
+.receipt-payment-entry > header b {
+  display: block;
+}
+.receipt-payment-entry > header small {
+  color: #7b8799;
+  font-size: 9px;
+  letter-spacing: .1em;
+}
+.receipt-payment-entry > header b,
+.receipt-payment-entry > header strong {
+  font-size: 15px;
+}
+.receipt-payment-entry > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+.receipt-payment-entry p,
+.receipt-payment-entry label {
+  margin: 0;
+  font-size: 10px;
+}
+.receipt-payment-entry p span,
+.receipt-payment-entry p b {
+  display: block;
+}
+.receipt-payment-entry p span {
+  color: #7b8799;
+  margin-bottom: 7px;
+}
+.receipt-payment-entry input {
+  width: 100%;
+  margin-top: 7px;
+  padding: 10px;
+  border: 1px solid #ccd7e8;
+  border-radius: 8px;
+  background: #fff;
+}
+.receipt-payment-entry footer {
+  padding-top: 12px;
+  border-top: 1px solid #dfe6f1;
+  font-size: 11px;
+}
+.receipt-payment-list {
+  margin: 16px 0;
+  border: 1px solid #dbe4f1;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+.receipt-payment-list > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  border-bottom: 1px solid #e5ebf4;
+}
+.receipt-payment-list > header small,
+.receipt-payment-list > header span {
+  display: block;
+  color: #7b8799;
+}
+.receipt-payment-list > header small { font-size: 9px; letter-spacing: .1em; }
+.receipt-payment-list > header h2 { margin: 4px 0; font-size: 17px; }
+.receipt-payment-list > header span { font-size: 10px; }
+.receipt-payment-list > header > b { color: #2563eb; font-size: 11px; }
+.receipt-payment-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px;
+  background: #f6f8fc;
+}
+.receipt-payment-cards article {
+  padding: 15px;
+  border: 1px solid #dfe6f1;
+  border-radius: 11px;
+  background: #fff;
+}
+.receipt-payment-cards article > header,
+.receipt-payment-cards article > footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.receipt-payment-cards article > header b,
+.receipt-payment-cards article > header span { display: block; }
+.receipt-payment-cards article > header b { font-size: 13px; }
+.receipt-payment-cards article > header span,
+.receipt-payment-cards article > footer span { color: #7b8799; font-size: 9px; margin-top: 3px; }
+.receipt-payment-cards em {
+  padding: 6px 9px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-style: normal;
+  white-space: nowrap;
+}
+.receipt-payment-cards em.paid { color: #087a55; background: #e5f8ef; }
+.receipt-payment-cards em.partial { color: #a15c00; background: #fff3d8; }
+.receipt-payment-cards em.unpaid { color: #a33737; background: #fdeaea; }
+.receipt-payment-cards article > div {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+.receipt-payment-cards p { margin: 0; }
+.receipt-payment-cards p span,
+.receipt-payment-cards p b,
+.receipt-payment-cards p strong { display: block; }
+.receipt-payment-cards p span { color: #7b8799; font-size: 8px; margin-bottom: 4px; }
+.receipt-payment-cards p b,
+.receipt-payment-cards p strong { font-size: 10px; }
+.receipt-payment-cards p strong { color: #b45309; }
+.receipt-payment-cards footer { padding-top: 12px; border-top: 1px solid #edf0f5; }
+.receipt-payment-cards footer button {
+  border: 1px solid #bcd0fb;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #2563eb;
+  background: #fff;
+  font-size: 9px;
+  font-weight: 700;
+}
+.payment-modal { max-width: 620px; }
+.payment-modal-summary,
+.payment-modal-status {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+  padding: 13px;
+  border-radius: 10px;
+  background: #f6f8fc;
+}
+.payment-modal-summary p,
+.payment-modal-status p { margin: 0; }
+.payment-modal-summary span,
+.payment-modal-summary b,
+.payment-modal-status span,
+.payment-modal-status b,
+.payment-modal-status strong { display: block; }
+.payment-modal-summary span,
+.payment-modal-status span { color: #7b8799; font-size: 9px; margin-bottom: 4px; }
+.payment-modal-summary b,
+.payment-modal-status b,
+.payment-modal-status strong { font-size: 11px; }
+.payment-modal-status strong { color: #b45309; }
+@media (max-width: 760px) {
+  .receipt-payment-entry > div,
+  .receipt-payment-cards,
+  .payment-modal-summary,
+  .payment-modal-status { grid-template-columns: 1fr; }
+  .receipt-payment-cards article > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .receipt-payment-cards article > footer { align-items: flex-start; flex-direction: column; }
+  .receipt-payment-cards footer button { width: 100%; min-height: 42px; }
+}
+
 /* Printable 80 mm bundle identity card. */
 .bundle-print-button {
   min-width: 98px;
