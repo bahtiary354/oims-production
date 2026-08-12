@@ -159,6 +159,9 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /PIC \/ Penanggung jawab/);
   assert.match(page, /Pilih PIC/);
   assert.match(page, /deletePIC/);
+  assert.match(layout, /apple-touch-icon\.png/);
+  assert.match(layout, /manifest\.webmanifest/);
+  assert.match(layout, /appleWebApp/);
   assert.match(page, /Tarif jahit per unit/);
   assert.match(page, /PEMBAYARAN VENDOR/);
   assert.match(page, /PEMBAYARAN SETORAN/);
