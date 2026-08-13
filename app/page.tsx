@@ -1490,6 +1490,7 @@ export default function Home() {
   const [data, setData] = useState<AppData>(initial);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isSimulation, setIsSimulation] = useState(false);
   const [modal, setModal] = useState<
     null | "master" | "vendor" | "qcLocation" | "pic" | "record"
   >(null);
@@ -1538,15 +1539,16 @@ export default function Home() {
   useEffect(() => {
     fetch("/api/state")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((x) =>
+      .then((x) => {
+        setIsSimulation(x.environment === "simulation");
         setData({
           ...x,
           models: x.models ?? [],
           vendors: x.vendors ?? [],
           qcLocations: x.qcLocations ?? [],
           pics: x.pics ?? [],
-        }),
-      )
+        });
+      })
       .catch(() => setData(initial))
       .finally(() => setLoaded(true));
   }, []);
@@ -1564,6 +1566,34 @@ export default function Home() {
       setData(data);
       flash("Data gagal disimpan. Silakan coba lagi.");
       throw new Error("Data gagal disimpan");
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function resetSimulation() {
+    if (!isSimulation) return;
+    if (
+      !window.confirm(
+        "Kosongkan seluruh transaksi simulasi? Data produksi asli tidak akan berubah.",
+      )
+    )
+      return;
+    setSaving(true);
+    try {
+      const response = await fetch("/api/state", { method: "DELETE" });
+      if (!response.ok) throw new Error("Gagal mengosongkan simulasi");
+      const next = await response.json();
+      setData({
+        ...next,
+        models: next.models ?? [],
+        vendors: next.vendors ?? [],
+        qcLocations: next.qcLocations ?? [],
+        pics: next.pics ?? [],
+      });
+      setActive("Dashboard");
+      flash("Transaksi simulasi dikosongkan. Data produksi tetap aman.");
+    } catch {
+      flash("Data simulasi gagal dikosongkan.");
     } finally {
       setSaving(false);
     }
@@ -2844,6 +2874,19 @@ export default function Home() {
           </span>
           <div className="top-avatar">AR</div>
         </header>
+        {isSimulation && (
+          <div className="simulation-banner" role="status">
+            <div>
+              <b>MODE SIMULASI</b>
+              <span>
+                Transaksi di halaman ini terpisah dari data produksi asli.
+              </span>
+            </div>
+            <button type="button" onClick={resetSimulation} disabled={saving}>
+              Kosongkan transaksi uji
+            </button>
+          </div>
+        )}
         <div className="workspace">
           {!loaded ? (
             <div className="loading">Menyiapkan data produksi…</div>

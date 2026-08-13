@@ -159,6 +159,10 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /PIC \/ Penanggung jawab/);
   assert.match(page, /Pilih PIC/);
   assert.match(page, /deletePIC/);
+  assert.match(page, /MODE SIMULASI/);
+  assert.match(page, /Kosongkan transaksi uji/);
+  assert.match(page, /resetSimulation/);
+  assert.match(css, /\.simulation-banner/);
   assert.match(layout, /apple-touch-icon\.png/);
   assert.match(layout, /manifest\.webmanifest/);
   assert.match(layout, /appleWebApp/);
@@ -203,7 +207,12 @@ test("persistent state is normalized without destructive reads and masters remai
   assert.match(route, /notes: \[\]/);
   assert.match(route, /normalizeState/);
   assert.doesNotMatch(route, /saved\.dataVersion !== 3/);
-  assert.match(route, /id:\s*2,\s*payload:\s*current\.payload/);
+  assert.match(route, /backupId/);
+  assert.match(route, /stateId = isSimulation \? 10 : 1/);
+  assert.match(route, /backupId = isSimulation \? 11 : 2/);
+  assert.match(route, /simulationStateFromProduction/);
+  assert.match(route, /export async function DELETE/);
+  assert.match(route, /Data produksi tidak dapat dikosongkan/);
   assert.match(route, /state saved with backup/);
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   assert.match(page, /deleteModel/);

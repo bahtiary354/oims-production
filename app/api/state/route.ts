@@ -10,6 +10,21 @@ const initialState = {
   notes: [],
 };
 
+const isSimulation = process.env.VERCEL_ENV !== "production";
+const stateId = isSimulation ? 10 : 1;
+const backupId = isSimulation ? 11 : 2;
+
+function simulationStateFromProduction(
+  production: Record<string, unknown> | null | undefined,
+) {
+  const source = production ? normalizeState(production) : initialState;
+  return {
+    ...source,
+    records: {},
+    notes: [],
+  };
+}
+
 function normalizeState(saved: Record<string, unknown>) {
   const rawRecords =
     saved.records && typeof saved.records === "object"
@@ -76,16 +91,31 @@ export async function GET() {
     const { data: row, error } = await db
       .from("app_state")
       .select("payload")
-      .eq("id", 1)
+      .eq("id", stateId)
       .maybeSingle();
     if (error) throw error;
 
     if (!row) {
+      let seed = simulationStateFromProduction(null);
+      if (isSimulation) {
+        const { data: productionRow, error: productionError } = await db
+          .from("app_state")
+          .select("payload")
+          .eq("id", 1)
+          .maybeSingle();
+        if (productionError) throw productionError;
+        const productionPayload = productionRow?.payload
+          ? typeof productionRow.payload === "string"
+            ? JSON.parse(productionRow.payload)
+            : productionRow.payload
+          : null;
+        seed = simulationStateFromProduction(productionPayload);
+      }
       const { error: insertError } = await db
         .from("app_state")
-        .insert({ id: 1, payload: initialState });
+        .insert({ id: stateId, payload: seed });
       if (insertError) throw insertError;
-      return Response.json(initialState);
+      return Response.json({ ...seed, environment: isSimulation ? "simulation" : "production" });
     }
     const saved =
       typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload;
@@ -96,7 +126,10 @@ export async function GET() {
       stages: Object.keys(normalized.records).length,
       notes: normalized.notes.length,
     });
-    return Response.json(normalized);
+    return Response.json({
+      ...normalized,
+      environment: isSimulation ? "simulation" : "production",
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Database tidak tersedia";
@@ -118,14 +151,14 @@ export async function PUT(request: Request) {
     const { data: current, error: readError } = await db
       .from("app_state")
       .select("payload")
-      .eq("id", 1)
+      .eq("id", stateId)
       .maybeSingle();
     if (readError) throw readError;
 
     if (current?.payload) {
       const { error: backupError } = await db.from("app_state").upsert(
         {
-          id: 2,
+          id: backupId,
           payload: current.payload,
           updated_at: new Date().toISOString(),
         },
@@ -137,7 +170,7 @@ export async function PUT(request: Request) {
     const { error } = await db
       .from("app_state")
       .upsert(
-        { id: 1, payload, updated_at: new Date().toISOString() },
+        { id: stateId, payload, updated_at: new Date().toISOString() },
         { onConflict: "id" },
       );
     if (error) throw error;
@@ -147,10 +180,50 @@ export async function PUT(request: Request) {
       stages: Object.keys(payload.records).length,
       notes: payload.notes.length,
     });
-    return Response.json({ ok: true });
+    return Response.json({
+      ok: true,
+      environment: isSimulation ? "simulation" : "production",
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Data gagal disimpan";
+    return Response.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function DELETE() {
+  if (!isSimulation) {
+    return Response.json(
+      { error: "Data produksi tidak dapat dikosongkan melalui endpoint simulasi." },
+      { status: 403 },
+    );
+  }
+  try {
+    const db = getSupabaseAdmin();
+    const { data: productionRow, error: productionError } = await db
+      .from("app_state")
+      .select("payload")
+      .eq("id", 1)
+      .maybeSingle();
+    if (productionError) throw productionError;
+    const productionPayload = productionRow?.payload
+      ? typeof productionRow.payload === "string"
+        ? JSON.parse(productionRow.payload)
+        : productionRow.payload
+      : null;
+    const payload = simulationStateFromProduction(productionPayload);
+    const { error } = await db.from("app_state").upsert(
+      { id: stateId, payload, updated_at: new Date().toISOString() },
+      { onConflict: "id" },
+    );
+    if (error) throw error;
+    return Response.json({
+      ...payload,
+      environment: "simulation",
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Simulasi gagal dikosongkan";
     return Response.json({ error: message }, { status: 500 });
   }
 }
