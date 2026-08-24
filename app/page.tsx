@@ -1,10 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, Fragment, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 const stages = [
-  "Order Produksi",
   "Cutting",
+  "Sablon/Bordir",
   "Bundle",
   "Pengiriman Vendor",
   "Penerimaan Gudang",
@@ -22,8 +22,8 @@ const nav = [
   ["⌂", "Master Vendor"],
   ["◎", "Master QC"],
   ["♙", "Master PIC"],
-  ["◇", "Order Produksi"],
   ["✂", "Cutting"],
+  ["✦", "Sablon/Bordir"],
   ["▱", "Bundle"],
   ["↗", "Pengiriman Vendor"],
   ["□", "Penerimaan Gudang"],
@@ -34,9 +34,71 @@ const nav = [
   ["✓", "QC Ulang"],
   ["!", "Karantina Reject"],
   ["▣", "Stok Barang Jadi"],
-  ["▥", "Laporan"],
+  ["▥", "Laporan Produksi"],
+  ["Rp", "Laporan Keuangan"],
   ["▤", "Surat Jalan"],
 ];
+const navGroups = [
+  {
+    id: "master",
+    section: "MANAJEMEN",
+    icon: "◎",
+    label: "Master Data",
+    items: ["Master Jaket", "Master Vendor", "Master QC", "Master PIC"],
+  },
+  {
+    id: "production",
+    section: "OPERASIONAL",
+    icon: "◇",
+    label: "Produksi",
+    items: ["Cutting", "Bundle"],
+  },
+  {
+    id: "decoration",
+    section: "OPERASIONAL",
+    icon: "✦",
+    label: "Sablon & Bordir",
+    items: ["Sablon/Bordir"],
+  },
+  {
+    id: "vendor",
+    section: "OPERASIONAL",
+    icon: "↗",
+    label: "Vendor & Gudang",
+    items: ["Pengiriman Vendor", "Penerimaan Gudang"],
+  },
+  {
+    id: "qc",
+    section: "OPERASIONAL",
+    icon: "✓",
+    label: "Quality Control",
+    items: [
+      "Pengiriman QC",
+      "Quality Control",
+      "Rework",
+      "Penerimaan Rework",
+      "QC Ulang",
+      "Karantina Reject",
+    ],
+  },
+  {
+    id: "inventory",
+    section: "OPERASIONAL",
+    icon: "▣",
+    label: "Persediaan",
+    items: ["Stok Barang Jadi"],
+  },
+  {
+    id: "report",
+    section: "ANALITIK",
+    icon: "▥",
+    label: "Laporan",
+    items: ["Laporan Produksi", "Laporan Keuangan"],
+  },
+] as const;
+function navIcon(name: string) {
+  return nav.find((item) => item[1] === name)?.[0] ?? "·";
+}
 const stageInfo: Record<
   string,
   {
@@ -55,14 +117,20 @@ const stageInfo: Record<
   Cutting: {
     prefix: "CUT",
     title: "Cutting",
-    desc: "Hasil potong mengikuti rincian PO.",
-    source: "Order Produksi",
+    desc: "Catat hasil potong aktual sebagai awal proses produksi.",
   },
   Bundle: {
     prefix: "BDL",
     title: "Bundle Produksi",
-    desc: "Pembagian hasil cutting yang tetap membawa warna dan ukuran.",
+    desc: "Pembagian hasil cutting atau hasil sablon/bordir yang sudah selesai.",
     source: "Cutting",
+  },
+  "Sablon/Bordir": {
+    prefix: "SBR",
+    title: "Pekerjaan Sablon & Bordir",
+    desc: "Kelola pekerjaan dekorasi per Cutting, vendor, posisi, dan jenis pekerjaan.",
+    source: "Cutting",
+    move: "Gudang Cutting → Vendor Dekorasi → Gudang atau Vendor Jahit",
   },
   "Pengiriman Vendor": {
     prefix: "KRM",
@@ -74,7 +142,7 @@ const stageInfo: Record<
   "Penerimaan Gudang": {
     prefix: "TRM",
     title: "Penerimaan Gudang & Progres Vendor",
-    desc: "Catat setoran bertahap dan pantau otomatis sisa barang di vendor.",
+    desc: "Terima setoran berdasarkan surat jalan pengiriman dan pantau otomatis sisa barang di vendor.",
     source: "Pengiriman Vendor",
     move: "Vendor Jahit → Gudang",
   },
@@ -132,7 +200,9 @@ type Model = {
   colors: string[];
   sizes: string[];
   active: boolean;
+  decorationProcess?: DecorationProcess;
 };
+type DecorationProcess = "none" | "screenprint" | "embroidery" | "both";
 type QCMode = "internal" | "vendor";
 type Vendor = {
   code: string;
@@ -144,6 +214,12 @@ type Vendor = {
   qcMode?: QCMode;
   qcOfficer?: string;
   qcLocationCode?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountHolder?: string;
+  capabilities?: Array<"sewing" | "screenprint" | "embroidery">;
+  screenprintRate?: number;
+  embroideryRate?: number;
 };
 type QCLocation = {
   code: string;
@@ -152,6 +228,10 @@ type QCLocation = {
   phone: string;
   address: string;
   active: boolean;
+  rate?: number;
+  bankName?: string;
+  accountNumber?: string;
+  accountHolder?: string;
 };
 type PIC = {
   code: string;
@@ -159,6 +239,9 @@ type PIC = {
   role: string;
   phone: string;
   active: boolean;
+  bankName?: string;
+  accountNumber?: string;
+  accountHolder?: string;
 };
 type Variant = { color: string; size: string; qty: number };
 type QCDetail = {
@@ -169,6 +252,19 @@ type QCDetail = {
   reject: number;
   repair: number;
   note: string;
+};
+type PaymentEntry = {
+  id: string;
+  date: string;
+  amount: number;
+  pic: string;
+  requester?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountHolder?: string;
+  note: string;
+  voided?: boolean;
+  voidReason?: string;
 };
 type RecordRow = {
   id: string;
@@ -197,8 +293,20 @@ type RecordRow = {
   bundleId?: string;
   deliveryNoteId?: string;
   sewingRate?: number;
+  cuttingRate?: number;
+  qcRate?: number;
   paidAmount?: number;
   paymentDate?: string;
+  paymentHistory?: PaymentEntry[];
+  decorationProcess?: DecorationProcess;
+  decorationType?: "screenprint" | "embroidery";
+  decorationPosition?: string;
+  decorationDescription?: string;
+  decorationRate?: number;
+  decorationCompleted?: number;
+  decorationOrder?: number;
+  decorationRequiredBeforeBundle?: boolean;
+  decorationFinalStep?: boolean;
 };
 type Note = {
   id: string;
@@ -215,6 +323,43 @@ type Note = {
   recipient?: string;
   note?: string;
   bundleIds?: string[];
+};
+type WeeklyPaymentLine = {
+  recordId: string;
+  modelName: string;
+  units: number;
+  rate: number;
+  amount: number;
+};
+type WeeklyPaymentKind = "cutting" | "qc" | "vendor" | "decoration";
+type WeeklyPayment = {
+  id: string;
+  kind: WeeklyPaymentKind;
+  periodStart: string;
+  periodEnd: string;
+  payee: string;
+  lines: WeeklyPaymentLine[];
+  totalUnits: number;
+  totalAmount: number;
+  paymentAmount?: number;
+  paidBefore?: number;
+  paymentDate: string;
+  pic: string;
+  requester?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountHolder?: string;
+  note: string;
+  voided?: boolean;
+  voidReason?: string;
+};
+type FinancePaymentRow = {
+  id: string;
+  date: string;
+  type: string;
+  payee: string;
+  amount: number;
+  status: string;
 };
 
 function periodYYMM(date: string) {
@@ -238,10 +383,144 @@ function rupiah(value: number) {
     maximumFractionDigits: 0,
   }).format(value || 0);
 }
+function rupiahInput(value: number) {
+  return `Rp ${new Intl.NumberFormat("id-ID", {
+    maximumFractionDigits: 0,
+  }).format(Math.max(0, Math.round(value || 0)))}`;
+}
+function parseRupiahInput(value: string) {
+  return Number(value.replace(/\D/g, "")) || 0;
+}
 function paymentStatus(bill: number, paid: number) {
   if (paid <= 0) return "Belum dibayar";
   if (paid < bill) return "DP sebagian";
   return "Lunas";
+}
+function decorationLabel(value?: DecorationProcess) {
+  if (value === "screenprint") return "Sablon";
+  if (value === "embroidery") return "Bordir";
+  if (value === "both") return "Sablon + bordir";
+  return "Tanpa sablon/bordir";
+}
+function legacyPayment(receipt: RecordRow): PaymentEntry[] {
+  if ((receipt.paymentHistory?.length ?? 0) > 0)
+    return receipt.paymentHistory ?? [];
+  if ((receipt.paidAmount ?? 0) <= 0) return [];
+  return [
+    {
+      id: `BYR-${receipt.stage === "Sablon/Bordir" ? "DEK" : receipt.stage === "Cutting" ? "CUT" : "JHT"}-LEGACY-${receipt.id}`,
+      date: receipt.paymentDate || receipt.date,
+      amount: receipt.paidAmount ?? 0,
+      pic: receipt.officer || "Belum dicatat",
+      note: "Pembayaran sebelum fitur riwayat diaktifkan",
+    },
+  ];
+}
+function paidForReceipt(receipt: RecordRow) {
+  return legacyPayment(receipt).reduce(
+    (total, payment) => total + (payment.voided ? 0 : payment.amount),
+    0,
+  );
+}
+function nextVendorPaymentId(data: AppData, date: string) {
+  const period = date.slice(2, 7).replace("-", ""),
+    prefix = `BYR-JHT-${period}-`,
+    used = (data.records["Penerimaan Gudang"] ?? [])
+      .flatMap(legacyPayment)
+      .map((payment) => payment.id)
+      .filter((id) => id.startsWith(prefix))
+      .map((id) => Number(id.slice(prefix.length)) || 0);
+  return `${prefix}${String(Math.max(0, ...used) + 1).padStart(3, "0")}`;
+}
+function nextCuttingPaymentId(data: AppData, date: string) {
+  const period = date.slice(2, 7).replace("-", ""),
+    prefix = `BYR-CUT-${period}-`,
+    used = (data.records.Cutting ?? [])
+      .flatMap(legacyPayment)
+      .map((payment) => payment.id)
+      .filter((id) => id.startsWith(prefix))
+      .map((id) => Number(id.slice(prefix.length)) || 0);
+  return `${prefix}${String(Math.max(0, ...used) + 1).padStart(3, "0")}`;
+}
+function localDateString(value = new Date()) {
+  const year = value.getFullYear(),
+    month = String(value.getMonth() + 1).padStart(2, "0"),
+    day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+function mondaySaturday(date = new Date()) {
+  const monday = new Date(date),
+    day = monday.getDay();
+  monday.setDate(monday.getDate() - ((day + 6) % 7));
+  const saturday = new Date(monday);
+  saturday.setDate(monday.getDate() + 5);
+  return { start: localDateString(monday), end: localDateString(saturday) };
+}
+function nextWeeklyPaymentId(
+  data: AppData,
+  kind: WeeklyPaymentKind,
+  date: string,
+) {
+  const period = date.slice(2, 7).replace("-", ""),
+    prefix = `BAY-${kind === "cutting" ? "CUT" : kind === "qc" ? "QC" : kind === "decoration" ? "DEK" : "JHT"}-${period}-`,
+    used = data.weeklyPayments
+      .map((payment) => payment.id)
+      .filter((id) => id.startsWith(prefix))
+      .map((id) => Number(id.slice(prefix.length)) || 0);
+  return `${prefix}${String(Math.max(0, ...used) + 1).padStart(3, "0")}`;
+}
+function weeklyPaymentMatches(
+  payment: WeeklyPayment,
+  kind: WeeklyPaymentKind,
+  payee: string,
+  periodStart: string,
+  periodEnd: string,
+) {
+  return (
+    !payment.voided &&
+    payment.kind === kind &&
+    payment.payee.trim().toLowerCase() === payee.trim().toLowerCase() &&
+    payment.periodStart === periodStart &&
+    payment.periodEnd === periodEnd
+  );
+}
+function weeklyPaidAmount(
+  payments: WeeklyPayment[],
+  kind: WeeklyPaymentKind,
+  payee: string,
+  periodStart: string,
+  periodEnd: string,
+) {
+  return payments
+    .filter((payment) =>
+      weeklyPaymentMatches(payment, kind, payee, periodStart, periodEnd),
+    )
+    .reduce(
+      (total, payment) =>
+        total + (payment.paymentAmount ?? payment.totalAmount),
+      0,
+    );
+}
+function allocatedWeeklyPaid(
+  payments: WeeklyPayment[],
+  kind: "cutting" | "qc" | "decoration",
+  recordIds: Set<string>,
+) {
+  return payments
+    .filter((payment) => !payment.voided && payment.kind === kind)
+    .reduce((total, payment) => {
+      if (payment.totalAmount <= 0) return total;
+      const ratio = Math.min(
+        1,
+        (payment.paymentAmount ?? payment.totalAmount) / payment.totalAmount,
+      );
+      return (
+        total +
+        payment.lines
+          .filter((line) => recordIds.has(line.recordId))
+          .reduce((sum, line) => sum + line.amount * ratio, 0)
+      );
+    }, 0);
 }
 function compareSizes(a: string, b: string) {
   const normalize = (size: string) => {
@@ -281,14 +560,43 @@ function compareSizes(a: string, b: string) {
     sensitivity: "base",
   });
 }
+
+function dashboardColorTone(name: string) {
+  const value = name.trim().toUpperCase(),
+    tones: Array<[string[], string, string]> = [
+      [["HITAM", "BLACK"], "#262d39", "#ffffff"],
+      [["NAVY", "DONGKER"], "#477cab", "#ffffff"],
+      [["OXFORD", "BLUE", "BIRU"], "#75a7cc", "#10233a"],
+      [["ARMY", "HIJAU", "GREEN"], "#a7c98f", "#17351d"],
+      [["PETROL"], "#478f86", "#ffffff"],
+      [["BURGUNDY", "MAROON"], "#903047", "#ffffff"],
+      [["CARAMEL", "CAMEL"], "#e9a75f", "#39220d"],
+      [["MOCCA", "MOCHA"], "#b48b72", "#281a14"],
+      [["BROWN", "COKLAT"], "#9a6048", "#ffffff"],
+      [["KHAKI", "KHAKI", "CREAM", "KREM"], "#ead2ad", "#342719"],
+      [["GREY", "GRAY", "ABU"], "#c3c7cc", "#20252b"],
+      [["PUTIH", "WHITE"], "#f5f5f2", "#222222"],
+      [["MERAH", "RED"], "#d76060", "#ffffff"],
+      [["PINK", "ROSE"], "#e7a7b8", "#3f1b25"],
+      [["UNGU", "PURPLE"], "#8066a8", "#ffffff"],
+      [["KUNING", "YELLOW"], "#e7ca55", "#302a0b"],
+      [["ORANGE", "OREN"], "#e88c48", "#351b08"],
+    ],
+    match = tones.find(([keys]) => keys.some((key) => value.includes(key)));
+  return match
+    ? { backgroundColor: match[1], color: match[2] }
+    : { backgroundColor: "#dce5ef", color: "#263548" };
+}
 type AppData = {
   dataVersion: number;
+  updatedAt?: string;
   models: Model[];
   vendors: Vendor[];
   qcLocations: QCLocation[];
   pics: PIC[];
   records: Record<string, RecordRow[]>;
   notes: Note[];
+  weeklyPayments: WeeklyPayment[];
 };
 
 const initial: AppData = {
@@ -299,7 +607,63 @@ const initial: AppData = {
   pics: [],
   records: {},
   notes: [],
+  weeklyPayments: [],
 };
+
+function mergeChangedItems<T>(
+  base: T[],
+  intended: T[],
+  latest: T[],
+  keyOf: (item: T) => string,
+) {
+  const baseById = new Map(base.map((item) => [keyOf(item), item])),
+    intendedById = new Map(intended.map((item) => [keyOf(item), item])),
+    merged = new Map(latest.map((item) => [keyOf(item), item]));
+  for (const id of baseById.keys()) {
+    if (!intendedById.has(id)) merged.delete(id);
+  }
+  for (const [id, item] of intendedById) {
+    const before = baseById.get(id);
+    if (!before || JSON.stringify(before) !== JSON.stringify(item))
+      merged.set(id, item);
+  }
+  return [...merged.values()];
+}
+
+function mergeConflictState(base: AppData, intended: AppData, latest: AppData) {
+  const stageNames = new Set([
+      ...Object.keys(base.records),
+      ...Object.keys(intended.records),
+      ...Object.keys(latest.records),
+    ]),
+    records = Object.fromEntries(
+      [...stageNames].map((stage) => [
+        stage,
+        mergeChangedItems(
+          base.records[stage] ?? [],
+          intended.records[stage] ?? [],
+          latest.records[stage] ?? [],
+          (item) => item.id,
+        ),
+      ]),
+    );
+  return {
+    ...latest,
+    models: mergeChangedItems(base.models, intended.models, latest.models, (item) => item.code),
+    vendors: mergeChangedItems(base.vendors, intended.vendors, latest.vendors, (item) => item.code),
+    qcLocations: mergeChangedItems(base.qcLocations, intended.qcLocations, latest.qcLocations, (item) => item.code),
+    pics: mergeChangedItems(base.pics, intended.pics, latest.pics, (item) => item.code),
+    records,
+    notes: mergeChangedItems(base.notes, intended.notes, latest.notes, (item) => item.id),
+    weeklyPayments: mergeChangedItems(
+      base.weeklyPayments,
+      intended.weeklyPayments,
+      latest.weeklyPayments,
+      (item) => item.id,
+    ),
+  } satisfies AppData;
+}
+
 const emptyForm = {
   date: new Date().toISOString().slice(0, 10),
   code: "",
@@ -316,8 +680,19 @@ const emptyForm = {
   qcReject: 0,
   qcRepair: 0,
   sewingRate: 0,
+  cuttingRate: 0,
   paidAmount: 0,
   paymentDate: "",
+  paymentPIC: "",
+  paymentNote: "",
+  decorationProcess: "none" as DecorationProcess,
+  decorationType: "screenprint" as "screenprint" | "embroidery",
+  decorationPosition: "Badan belakang",
+  decorationDescription: "",
+  decorationRate: 0,
+  decorationCompleted: 0,
+  decorationRequiredBeforeBundle: true,
+  decorationFinalStep: true,
 };
 const sum = (v: Variant[]) => v.reduce((a, b) => a + b.qty, 0);
 function automaticModelCode(
@@ -497,56 +872,57 @@ function QCLocationMaster({
   onEdit: (x: QCLocation) => void;
   onDelete: (x: QCLocation) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const filtered = items.filter((x) =>
+    [x.code, x.location, x.recipient, x.phone, x.address]
+      .join(" ")
+      .toLowerCase()
+      .includes(query.toLowerCase()),
+  );
   return (
     <>
-      <div className="page-title">
-        <div>
-          <p className="overline">MASTER DATA</p>
-          <h1>Tujuan & Penerima QC</h1>
-          <span>
-            Dipakai otomatis saat membuat pengiriman dan surat jalan ke Quality
-            Control.
-          </span>
-        </div>
-        <button className="primary" onClick={onAdd}>
-          ＋ Tambah tujuan QC
-        </button>
-      </div>
+      <MasterTableTitle title="Master QC" />
       {items.length === 0 ? (
         <Empty
           title="Belum ada tujuan QC"
           text="Tambahkan tujuan dan penerima QC pertama."
         />
       ) : (
-        <div className="model-grid">
-          {items.map((x) => (
-            <article key={x.code}>
-              <div>
-                <span>{x.code}</span>
-                <em>{x.active ? "Aktif" : "Nonaktif"}</em>
-              </div>
-              <h2>{x.location}</h2>
-              <small>PENERIMA</small>
-              <p>
-                <b>{x.recipient}</b>
-              </p>
-              <small>KONTAK</small>
-              <p>{x.phone || "Belum diisi"}</p>
-              <footer>
-                <span>{x.address || "Alamat belum diisi"}</span>
-                <div className="master-actions">
-                  <button onClick={() => onEdit(x)}>✎ Edit</button>
-                  <button className="danger" onClick={() => onDelete(x)}>
-                    ♲ Hapus
-                  </button>
-                </div>
-              </footer>
-            </article>
-          ))}
-        </div>
+        <MasterTablePanel query={query} onQuery={setQuery} placeholder="Cari kode, lokasi, atau penerima..." addLabel="Tambah QC" onAdd={onAdd} count={filtered.length} columns={["No.", "Kode", "Lokasi QC", "Penerima", "Tarif", "Rekening", "Status", "Aksi"]}>
+          <table className="master-data-table"><thead><tr><th>No.</th><th>Kode</th><th>Lokasi QC</th><th>Penerima</th><th>Tarif</th><th>Rekening</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
+            {filtered.map((x, index) => <tr key={x.code}><td data-label="No.">{index + 1}</td><td data-label="Kode"><b>{x.code}</b></td><td data-label="Lokasi"><b>{x.location}</b><small>{x.address || "Alamat belum diisi"}</small></td><td data-label="Penerima"><b>{x.recipient}</b><small>{x.phone || "Kontak belum diisi"}</small></td><td data-label="Tarif">{x.rate ? `${rupiah(x.rate)} / unit` : "Belum diatur"}</td><td data-label="Rekening">{x.bankName && x.accountNumber ? <><b>{x.bankName} {x.accountNumber}</b><small>a.n. {x.accountHolder || x.recipient}</small></> : "Belum diisi"}</td><td data-label="Status"><span className={`master-status ${x.active ? "active" : "inactive"}`}>{x.active ? "Aktif" : "Nonaktif"}</span></td><td data-label="Aksi"><MasterRowActions onEdit={() => onEdit(x)} onDelete={() => onDelete(x)} /></td></tr>)}
+          </tbody></table>
+        </MasterTablePanel>
       )}
     </>
   );
+}
+
+function MasterTableTitle({ title }: { title: string }) {
+  return <div className="master-table-title"><div><h1>{title}</h1></div><p>Master <b>›</b> {title.replace("Master ", "")}</p></div>;
+}
+function MasterTablePanel({ query, onQuery, placeholder, addLabel, onAdd, count, columns, children }: { query: string; onQuery: (value: string) => void; placeholder: string; addLabel: string; onAdd: () => void; count: number; columns: string[]; children: ReactNode }) {
+  const [columnMenu, setColumnMenu] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState(() => columns.map(() => true));
+  const allVisible = visibleColumns.every(Boolean);
+  const hiddenClasses = visibleColumns.map((visible, index) => visible ? "" : `hide-master-col-${index + 1}`).filter(Boolean).join(" ");
+  const toggleColumn = (index: number) => setVisibleColumns((current) => current.map((visible, itemIndex) => itemIndex === index ? !visible : visible));
+  return <section className={`master-table-panel ${hiddenClasses}`}>
+    <header className="master-table-toolbar">
+      <div className="master-toolbar-left">
+        <label className="master-search-field"><span className="master-search-icon">⌕</span><input value={query} onChange={(e) => onQuery(e.target.value)} placeholder={placeholder} /></label>
+        <div className="master-column-control">
+          <button type="button" className="master-column-button" aria-expanded={columnMenu} onClick={() => setColumnMenu((open) => !open)}><span>▥</span> Kolom</button>
+          {columnMenu && <div className="master-column-menu"><header><b>KOLOM</b><b>TAMPIL</b></header><label className="toggle-all"><span>Tampilkan semua</span><input type="checkbox" checked={allVisible} onChange={() => setVisibleColumns(columns.map(() => !allVisible))} /></label>{columns.map((column, index) => <label key={column}><span>{column}</span><input type="checkbox" checked={visibleColumns[index]} onChange={() => toggleColumn(index)} /></label>)}</div>}
+        </div>
+      </div>
+      <button className="primary" onClick={onAdd}>＋ {addLabel}</button>
+    </header>
+    <div className="master-table-scroll">{children}</div><footer><span>Tampilkan <b>{Math.min(10, count)}</b> data</span><span>Menampilkan {count ? `1–${count}` : "0"} dari {count} data</span><b className="master-page">1</b></footer>
+  </section>;
+}
+function MasterRowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  return <div className="master-row-actions"><button title="Edit" aria-label="Edit" onClick={onEdit}>✎</button><button className="danger" title="Hapus" aria-label="Hapus" onClick={onDelete}>♲</button></div>;
 }
 function VendorPerformance({ data }: { data: AppData }) {
   const [mode, setMode] = useState("week");
@@ -857,7 +1233,7 @@ function tracePO(data: AppData, shipment: RecordRow) {
     po = (data.records["Order Produksi"] ?? []).find(
       (x) => x.id === cut?.sourceId,
     );
-  return po?.id ?? "PO tidak ditemukan";
+  return shipment.poId ?? cut?.poId ?? cut?.id ?? po?.id ?? "Referensi Cutting tidak ditemukan";
 }
 
 function LegacyOwnerVendorMonitoring({ data }: { data: AppData }) {
@@ -1090,7 +1466,7 @@ function LegacyOwnerVendorMonitoring({ data }: { data: AppData }) {
           <div>
             <h2>Rincian WIP per vendor</h2>
             <p>
-              Nomor PO, artikel, warna, ukuran, dan saldo fisik yang masih di
+              Referensi Cutting, artikel, warna, ukuran, dan saldo fisik yang masih di
               penjahit.
             </p>
           </div>
@@ -1123,7 +1499,7 @@ function LegacyOwnerVendorMonitoring({ data }: { data: AppData }) {
                         <span>
                           <b>{j.s.modelName}</b>
                           <small>
-                            PO {j.po} · Kiriman {j.s.id}
+                            Referensi {j.po} · Kiriman {j.s.id}
                           </small>
                         </span>
                         <span>
@@ -1154,15 +1530,26 @@ function LegacyOwnerVendorMonitoring({ data }: { data: AppData }) {
   );
 }
 
-function OwnerVendorMonitoring({ data }: { data: AppData }) {
+function OwnerVendorMonitoring({
+  data,
+  periodStart,
+  periodEnd,
+}: {
+  data: AppData;
+  periodStart: string;
+  periodEnd: string;
+}) {
   const [selected, setSelected] = useState<string | null>(null),
+    [historyQuery, setHistoryQuery] = useState(""),
+    [historyPeriod, setHistoryPeriod] = useState<"dashboard" | "today" | "week" | "month" | "custom" | "all">("dashboard"),
+    [historyCustomStart, setHistoryCustomStart] = useState(periodStart),
+    [historyCustomEnd, setHistoryCustomEnd] = useState(periodEnd),
     today = new Date(),
     shipments = data.records["Pengiriman Vendor"] ?? [],
     receipts = data.records["Penerimaan Gudang"] ?? [];
   const vendors = data.vendors.map((v) => {
       const sent = shipments.filter((x) => x.destination === v.name),
-        jobs = sent
-          .map((s) => {
+        allJobs = sent.map((s) => {
             const related = receipts.filter((r) => r.sourceId === s.id),
               remaining = subtractVariants(
                 s.variants,
@@ -1172,47 +1559,83 @@ function OwnerVendorMonitoring({ data }: { data: AppData }) {
             return {
               s,
               po: tracePO(data, s),
+              related,
               remaining,
               left: sum(remaining),
               received,
-            };
-          })
-          .filter((x) => x.left > 0),
-        total = sent.reduce((n, x) => n + x.total, 0),
-        done = sent.reduce(
-          (n, s) =>
-            n +
-            receipts
-              .filter((r) => r.sourceId === s.id)
-              .reduce((a, r) => a + r.total, 0),
-          0,
-        ),
-        left = jobs.reduce((n, x) => n + x.left, 0),
-        oldest = jobs
-          .map((x) => x.s)
-          .sort((a, b) => a.date.localeCompare(b.date))[0],
-        days = oldest
-          ? Math.max(
-              0,
-              Math.floor(
-                (today.getTime() -
-                  new Date(oldest.date + "T00:00:00").getTime()) /
-                  86400000,
+              age: Math.max(
+                0,
+                Math.floor(
+                  (today.getTime() - new Date(s.date + "T00:00:00").getTime()) /
+                    86400000,
+                ),
               ),
+            };
+          }),
+        jobs = allJobs.filter((x) => x.left > 0),
+        periodReceipts = allJobs.flatMap((job) =>
+          job.related
+            .filter((receipt) => receipt.date >= periodStart && receipt.date <= periodEnd)
+            .map((receipt) => ({ receipt, job })),
+        ),
+        total = sent.reduce((n, x) => n + x.total, 0),
+        done = allJobs.reduce((n, job) => n + job.received, 0),
+        donePeriod = periodReceipts.reduce((n, item) => n + item.receipt.total, 0),
+        left = jobs.reduce((n, x) => n + x.left, 0),
+        days = jobs.length ? Math.max(...jobs.map((job) => job.age)) : 0,
+        completedJobs = allJobs.filter((job) => {
+          if (job.left > 0 || job.related.length === 0) return false;
+          const finalDate = [...job.related].sort((a, b) => b.date.localeCompare(a.date))[0].date;
+          return finalDate >= periodStart && finalDate <= periodEnd;
+        }),
+        averageDays = completedJobs.length
+          ? Math.round(
+              completedJobs.reduce((sumDays, job) => {
+                const finalDate = [...job.related].sort((a, b) => b.date.localeCompare(a.date))[0].date;
+                return (
+                  sumDays +
+                  Math.max(
+                    0,
+                    Math.floor(
+                      (new Date(finalDate + "T00:00:00").getTime() -
+                        new Date(job.s.date + "T00:00:00").getTime()) /
+                        86400000,
+                    ),
+                  )
+                );
+              }, 0) / completedJobs.length,
             )
-          : 0;
-      return { v, jobs, total, done, left, days };
+          : null,
+        periodModels = [...new Set(periodReceipts.map((item) => item.receipt.modelName))],
+        status = left > 0 ? "active" : donePeriod > 0 ? "done" : "idle";
+      return { v, allJobs, jobs, periodReceipts, periodModels, total, done, donePeriod, left, days, averageDays, status };
     }),
     detail = vendors.find((x) => x.v.code === selected);
+  const todayString = localDateString(today),
+    historyWeekDate = new Date(today);
+  historyWeekDate.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  const historyWeekStart = localDateString(historyWeekDate),
+    historyMonthStart = `${todayString.slice(0, 8)}01`,
+    historyStart = historyPeriod === "dashboard" ? periodStart : historyPeriod === "today" ? todayString : historyPeriod === "week" ? historyWeekStart : historyPeriod === "month" ? historyMonthStart : historyPeriod === "custom" ? historyCustomStart : "",
+    historyEnd = historyPeriod === "dashboard" ? periodEnd : historyPeriod === "custom" ? historyCustomEnd : historyPeriod === "all" ? "" : todayString,
+    normalizedHistoryQuery = historyQuery.trim().toLowerCase(),
+    filteredHistoryReceipts = detail
+      ? detail.allJobs
+          .flatMap((job) => job.related.map((receipt) => ({ receipt, job })))
+          .filter(({ receipt, job }) => {
+            const inRange = historyPeriod === "all" || (receipt.date >= historyStart && receipt.date <= historyEnd),
+              searchable = [receipt.id, receipt.sourceId, receipt.modelName, receipt.date, job.po, job.s.id, ...receipt.variants.flatMap((variant) => [variant.color, variant.size])].join(" ").toLowerCase();
+            return inRange && (!normalizedHistoryQuery || searchable.includes(normalizedHistoryQuery));
+          })
+          .sort((a, b) => b.receipt.date.localeCompare(a.receipt.date) || b.receipt.id.localeCompare(a.receipt.id))
+      : [],
+    filteredHistoryTotal = filteredHistoryReceipts.reduce((totalQty, item) => totalQty + item.receipt.total, 0);
   return (
     <section className="owner-simple-panel vendor-simple">
       <header>
         <div>
-          <p className="overline">BARANG DI VENDOR</p>
-          <h2>Pekerjaan per penjahit</h2>
-          <span>Hanya pekerjaan aktif dan saldo unit yang belum disetor.</span>
+          <h2>Aktivitas Vendor</h2>
         </div>
-        <b>{vendors.reduce((n, x) => n + x.left, 0)} unit di vendor</b>
       </header>
       <div className="scroll">
         <table>
@@ -1220,11 +1643,11 @@ function OwnerVendorMonitoring({ data }: { data: AppData }) {
             <tr>
               <th>STATUS</th>
               <th>VENDOR</th>
-              <th>MODEL DIKERJAKAN</th>
-              <th>DIKIRIM</th>
-              <th>SELESAI</th>
-              <th>SISA</th>
-              <th>LAMA</th>
+              <th>PEKERJAAN AKTIF</th>
+              <th>WIP AKTUAL</th>
+              <th>SELESAI PERIODE</th>
+              <th>MODEL SELESAI</th>
+              <th>USIA WIP</th>
             </tr>
           </thead>
           <tbody>
@@ -1232,9 +1655,9 @@ function OwnerVendorMonitoring({ data }: { data: AppData }) {
               <tr key={x.v.code} onClick={() => setSelected(x.v.code)}>
                 <td>
                   <span
-                    className={`vendor-dot ${x.left > 0 ? "active" : "idle"}`}
+                    className={`vendor-dot ${x.status}`}
                   >
-                    {x.left > 0 ? "Aktif" : "Kosong"}
+                    {x.status === "active" ? "Aktif" : x.status === "done" ? "Selesai" : "Kosong"}
                   </span>
                 </td>
                 <td>
@@ -1253,11 +1676,9 @@ function OwnerVendorMonitoring({ data }: { data: AppData }) {
                       : "Tidak ada pekerjaan"}
                   </small>
                 </td>
-                <td>{x.total}</td>
-                <td>{x.done}</td>
-                <td>
-                  <strong>{x.left}</strong>
-                </td>
+                <td><strong>{x.left}</strong></td>
+                <td>{x.donePeriod}</td>
+                <td>{x.periodModels.join(", ") || "—"}</td>
                 <td>{x.left > 0 ? `${x.days} hari` : "—"}</td>
               </tr>
             ))}
@@ -1269,52 +1690,42 @@ function OwnerVendorMonitoring({ data }: { data: AppData }) {
           className="owner-drawer-backdrop"
           onClick={() => setSelected(null)}
         >
-          <aside className="owner-drawer" onClick={(e) => e.stopPropagation()}>
+          <aside className="owner-drawer vendor-activity-drawer" onClick={(e) => e.stopPropagation()}>
             <header>
               <div>
-                <p className="overline">RINCIAN VENDOR</p>
-                <h2>{detail.v.name}</h2>
-                <span>{detail.left} unit masih berada di penjahit</span>
+                <h2>Rincian {detail.v.name}</h2>
+                <span>{detail.left} unit WIP · {detail.donePeriod} unit selesai pada periode</span>
               </div>
               <button onClick={() => setSelected(null)}>×</button>
             </header>
-            {detail.jobs.length === 0 ? (
-              <div className="drawer-empty">
-                <i>✓</i>
-                <b>Tidak ada pekerjaan aktif</b>
+            <div className="vendor-activity-drawer-body">
+              <div className="vendor-drawer-summary">
+                <article><span>WIP aktual</span><b>{detail.left}</b></article>
+                <article><span>Selesai periode</span><b>{detail.donePeriod}</b></article>
+                <article><span>Usia WIP tertua</span><b>{detail.left > 0 ? `${detail.days} hari` : "—"}</b></article>
+                <article><span>Rata-rata selesai</span><b>{detail.averageDays === null ? "—" : `${detail.averageDays} hari`}</b></article>
               </div>
-            ) : (
-              <div className="drawer-list">
-                {detail.jobs.map((j) => (
-                  <article key={j.s.id}>
-                    <header>
-                      <div>
-                        <small>
-                          {j.po} · {j.s.id}
-                        </small>
-                        <h3>{j.s.modelName}</h3>
-                        <span>
-                          Dikirim {j.s.total} · selesai {j.received}
-                        </span>
-                      </div>
-                      <b>
-                        {j.left}
-                        <small> unit</small>
-                      </b>
-                    </header>
-                    <div>
-                      {j.remaining.map((v) => (
-                        <p key={`${v.color}-${v.size}`}>
-                          <span>{v.color}</span>
-                          <b>{v.size}</b>
-                          <strong>{v.qty} unit</strong>
-                        </p>
-                      ))}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
+              <section className="vendor-drawer-section">
+                <header><h3>Pekerjaan aktif</h3><b>{detail.jobs.length} kiriman</b></header>
+                {detail.jobs.length === 0 ? <p className="vendor-drawer-empty">Tidak ada pekerjaan aktif.</p> : <div className="summary-detail-table-wrap"><table className="summary-detail-table vendor-activity-table"><thead><tr><th>No.</th><th>Referensi</th><th>Model</th><th>Warna</th><th>Size</th><th>Dikirim</th><th>Diterima</th><th>Sisa</th><th>Usia</th></tr></thead><tbody>{detail.jobs.flatMap((job) => job.remaining.map((variant) => {
+                  const sentQty = job.s.variants.filter((item) => item.color === variant.color && item.size === variant.size).reduce((totalQty, item) => totalQty + item.qty, 0),
+                    receivedQty = sentQty - variant.qty;
+                  return { job, variant, sentQty, receivedQty };
+                })).map(({ job, variant, sentQty, receivedQty }, index, rows) => <tr className={index === 0 || job.s.modelName !== rows[index - 1].job.s.modelName ? "model-group-start" : ""} key={`${job.s.id}-${variant.color}-${variant.size}`}><td>{index + 1}</td><td><b>{job.s.id}</b><small>{job.po}</small></td><td>{job.s.modelName}</td><td className="summary-color-cell" style={dashboardColorTone(variant.color)}>{variant.color}</td><td>{variant.size}</td><td>{sentQty}</td><td>{receivedQty}</td><td><strong>{variant.qty}</strong></td><td>{job.age} hari</td></tr>)}</tbody></table></div>}
+              </section>
+              <section className="vendor-drawer-section">
+                <header><h3>Riwayat selesai</h3><b>{filteredHistoryTotal} unit · {filteredHistoryReceipts.length} setoran</b></header>
+                <div className="vendor-history-filters">
+                  <label className="vendor-history-search"><span>Cari riwayat</span><input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Nomor, PO, model, warna, size..." /></label>
+                  <label><span>Periode</span><select value={historyPeriod} onChange={(event) => setHistoryPeriod(event.target.value as typeof historyPeriod)}><option value="dashboard">Periode dashboard</option><option value="today">Hari ini</option><option value="week">Minggu ini</option><option value="month">Bulan ini</option><option value="custom">Custom</option><option value="all">Semua waktu</option></select></label>
+                  {historyPeriod === "custom" && <><label><span>Mulai</span><input type="date" value={historyCustomStart} onChange={(event) => setHistoryCustomStart(event.target.value)} /></label><label><span>Selesai</span><input type="date" value={historyCustomEnd} min={historyCustomStart} onChange={(event) => setHistoryCustomEnd(event.target.value)} /></label></>}
+                </div>
+                {filteredHistoryReceipts.length === 0 ? <p className="vendor-drawer-empty">Tidak ada riwayat yang cocok dengan pencarian dan periode.</p> : <div className="summary-detail-table-wrap vendor-history-table-scroll"><table className="summary-detail-table vendor-history-table"><thead><tr><th>No.</th><th>Tanggal</th><th>Referensi</th><th>Model</th><th>Warna</th><th>Size</th><th>Jumlah</th><th>Usia Pekerjaan</th></tr></thead><tbody>{filteredHistoryReceipts.flatMap(({ receipt, job }) => {
+                  const workAge = Math.max(0, Math.floor((new Date(receipt.date + "T00:00:00").getTime() - new Date(job.s.date + "T00:00:00").getTime()) / 86400000));
+                  return receipt.variants.map((variant) => ({ receipt, job, variant, workAge }));
+                }).map(({ receipt, job, variant, workAge }, index, rows) => <tr className={index === 0 || receipt.modelName !== rows[index - 1].receipt.modelName ? "model-group-start" : ""} key={`${receipt.id}-${variant.color}-${variant.size}`}><td>{index + 1}</td><td>{receipt.date}</td><td><b>{receipt.id}</b><small>{job.po}</small></td><td>{receipt.modelName}</td><td className="summary-color-cell" style={dashboardColorTone(variant.color)}>{variant.color}</td><td>{variant.size}</td><td><strong>{variant.qty}</strong></td><td>{workAge} hari</td></tr>)}</tbody></table></div>}
+              </section>
+            </div>
           </aside>
         </div>
       )}
@@ -1322,15 +1733,92 @@ function OwnerVendorMonitoring({ data }: { data: AppData }) {
   );
 }
 
+function cuttingWorkflowStatus(
+  row: RecordRow,
+  allRecords: Record<string, RecordRow[]>,
+) {
+  const bundles = (allRecords.Bundle ?? []).filter(
+    (item) => item.sourceId === row.id,
+  );
+  const bundled = bundles.reduce((total, item) => total + item.total, 0);
+  if (bundled === 0)
+    return { label: "Menunggu Bundle", tone: "waiting", done: false };
+  if (bundled < row.total)
+    return { label: "Sebagian Dibundle", tone: "partial", done: false };
+
+  const shippedBundleIds = new Set(
+    (allRecords["Pengiriman Vendor"] ?? []).map((item) => item.sourceId),
+  );
+  const allBundlesShipped =
+    bundles.length > 0 && bundles.every((bundle) => shippedBundleIds.has(bundle.id));
+  return allBundlesShipped
+    ? { label: "Seluruh Bundle Dikirim", tone: "done", done: true }
+    : { label: "Selesai Dibundle", tone: "done", done: true };
+}
+
+const tableToolbarStages = new Set([
+  "Bundle",
+  "Sablon/Bordir",
+  "Pengiriman Vendor",
+  "Penerimaan Gudang",
+  "Pengiriman QC",
+  "Quality Control",
+  "Rework",
+  "Penerimaan Rework",
+  "QC Ulang",
+  "Stok Barang Jadi",
+]);
+
+const qcOperationalStages = new Set([
+  "Pengiriman QC",
+  "Quality Control",
+  "Rework",
+  "Penerimaan Rework",
+  "QC Ulang",
+]);
+
+function stagePrimaryActionLabel(active: string) {
+  if (active === "Sablon/Bordir") return "Buat pekerjaan dekorasi";
+  if (active === "Pengiriman Vendor") return "Kirim ke vendor";
+  if (active === "Penerimaan Gudang") return "Terima setoran vendor";
+  if (active === "Pengiriman QC") return "Kirim ke QC";
+  if (active === "Quality Control") return "Terima & periksa";
+  if (active === "Rework") return "Kirim repair";
+  if (active === "Penerimaan Rework") return "Terima hasil repair";
+  if (active === "QC Ulang") return "Periksa ulang";
+  if (active === "Stok Barang Jadi") return "Masukkan stok";
+  return "Catat proses";
+}
+
 function LiveStageStatus({
   active,
   rows,
   allRecords,
+  mode,
+  onUpdateDecoration,
+  showTableToolbar = false,
+  onAdd,
+  addLabel,
+  addDisabled = false,
 }: {
   active: string;
   rows: RecordRow[];
   allRecords: Record<string, RecordRow[]>;
+  mode: "active" | "completed";
+  onUpdateDecoration?: (row: RecordRow) => void;
+  showTableToolbar?: boolean;
+  onAdd?: () => void;
+  addLabel?: string;
+  addDisabled?: boolean;
 }) {
+  const [activeQuery, setActiveQuery] = useState("");
+  const [mobileView, setMobileView] = useState<"cards" | "table">("table");
+  const [columnMenu, setColumnMenu] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState(() => Array(13).fill(true) as boolean[]);
+  const [completedQuery, setCompletedQuery] = useState("");
+  const [completedPeriod, setCompletedPeriod] = useState<"today" | "week" | "month" | "custom" | "all">("month");
+  const [completedStart, setCompletedStart] = useState("");
+  const [completedEnd, setCompletedEnd] = useState("");
   const children = (stage: string, id: string) =>
     (allRecords[stage] ?? []).filter((x) => x.sourceId === id);
   const statusFor = (r: RecordRow) => {
@@ -1338,22 +1826,24 @@ function LiveStageStatus({
       return children("Cutting", r.id).length
         ? { label: "Selesai · Masuk Cutting", tone: "done", done: true }
         : { label: "Menunggu Cutting", tone: "waiting", done: false };
-    if (active === "Cutting") {
-      const used = children("Bundle", r.id).reduce((n, x) => n + x.total, 0);
-      return used === 0
-        ? { label: "Menunggu Bundle", tone: "waiting", done: false }
-        : used < r.total
-          ? {
-              label: `Dibundle sebagian · ${used}/${r.total}`,
-              tone: "partial",
-              done: false,
-            }
-          : { label: "Selesai Dibundle", tone: "done", done: true };
-    }
-    if (active === "Bundle")
+    if (active === "Cutting") return cuttingWorkflowStatus(r, allRecords);
+    if (active === "Bundle") {
       return children("Pengiriman Vendor", r.id).length
         ? { label: "Dikirim ke Vendor Jahit", tone: "done", done: true }
         : { label: "Menunggu Pengiriman Vendor", tone: "waiting", done: false };
+    }
+    if (active === "Sablon/Bordir") {
+      const completed = Math.min(r.total, r.decorationCompleted ?? 0);
+      return completed >= r.total
+        ? { label: "Selesai", tone: "done", done: true }
+        : completed > 0
+          ? {
+              label: `Selesai sebagian · ${completed}/${r.total}`,
+              tone: "partial",
+              done: false,
+            }
+          : { label: "Di vendor dekorasi", tone: "waiting", done: false };
+    }
     if (active === "Pengiriman Vendor") {
       const received = children("Penerimaan Gudang", r.id).reduce(
         (n, x) => n + x.total,
@@ -1376,9 +1866,19 @@ function LiveStageStatus({
           tone: "done",
           done: true,
         };
-      return children("Pengiriman QC", r.id).length
-        ? { label: "Dikirim ke QC", tone: "done", done: true }
-        : { label: "Menunggu Kirim QC", tone: "waiting", done: false };
+      const sent = children("Pengiriman QC", r.id).reduce(
+        (total, child) => total + child.total,
+        0,
+      );
+      return sent === 0
+        ? { label: "Menunggu Kirim QC", tone: "waiting", done: false }
+        : sent < r.total
+          ? {
+              label: `Dikirim ke QC sebagian · ${sent}/${r.total}`,
+              tone: "partial",
+              done: false,
+            }
+          : { label: "Seluruhnya dikirim ke QC", tone: "done", done: true };
     }
     if (active === "Pengiriman QC")
       return children("Quality Control", r.id).length
@@ -1413,81 +1913,165 @@ function LiveStageStatus({
         : { label: "Menunggu QC ulang", tone: "waiting", done: false };
     return { label: "Masuk Stok Barang Jadi", tone: "done", done: true };
   };
-  const items = rows.map((row) => ({ row, ...statusFor(row) })),
+  const activeRows = mode === "active" && active === "Bundle"
+    ? (allRecords.Cutting ?? []).map((cutting) => {
+        const decorationJobs = (allRecords["Sablon/Bordir"] ?? []).filter(
+          (row) => row.sourceId === cutting.id && row.decorationRequiredBeforeBundle !== false,
+        );
+        const expectedDecoration = cutting.decorationProcess ?? "none";
+        const expectedTypesReady =
+          expectedDecoration === "screenprint" ? decorationJobs.some((row) => row.decorationType === "screenprint")
+          : expectedDecoration === "embroidery" ? decorationJobs.some((row) => row.decorationType === "embroidery")
+          : expectedDecoration === "both" ? decorationJobs.some((row) => row.decorationType === "screenprint") && decorationJobs.some((row) => row.decorationType === "embroidery")
+          : true;
+        const explicitFinalStep = decorationJobs.some((row) => typeof row.decorationFinalStep === "boolean");
+        const decorationReady = decorationJobs.length > 0 && expectedTypesReady &&
+          (!explicitFinalStep || decorationJobs.some((row) => row.decorationFinalStep === true)) &&
+          decorationJobs.every((row) => (row.decorationCompleted ?? 0) >= row.total);
+        const releasedVariants = expectedDecoration === "none" || decorationReady
+          ? cutting.variants
+          : cutting.variants.map((variant) => ({ ...variant, qty: 0 }));
+        const bundledVariants = (allRecords.Bundle ?? [])
+          .filter((record) => record.sourceId === cutting.id)
+          .flatMap((record) => record.variants);
+        const remainingVariants = subtractVariants(releasedVariants, bundledVariants);
+        return {
+          ...cutting,
+          variants: remainingVariants,
+          total: sum(remainingVariants),
+          status: "Belum dibundel",
+        };
+      }).filter((row) => row.total > 0)
+    : rows;
+  const items = activeRows.map((row) => ({
+      row,
+      ...(mode === "active" && active === "Bundle"
+        ? { label: "Belum dibundel", tone: "waiting", done: false }
+        : statusFor(row)),
+    })),
     working = items.filter((x) => !x.done),
-    completed = items.filter((x) => x.done);
-  const list = (entries: typeof items) => (
-    <div className="live-status-grid">
-      {entries.map(({ row, label, tone }) => (
-        <article key={row.id}>
-          <header>
-            <div>
-              <small>
-                {row.id} · {row.date}
-              </small>
-              <h3>{row.modelName}</h3>
-            </div>
-            <em className={tone}>{label}</em>
-          </header>
-          <div>
-            <span>
-              Sumber <b>{row.sourceId || "Master Jaket"}</b>
-            </span>
-            <span>
-              Jumlah <b>{row.total} unit</b>
-            </span>
-            {row.destination && (
-              <span>
-                Tujuan / Vendor <b>{row.destination}</b>
-              </span>
-            )}
-          </div>
-          <p>
-            {row.variants
-              .map((v) => `${v.color} ${v.size}: ${v.qty}`)
-              .join(" · ")}
-          </p>
-        </article>
-      ))}
-    </div>
+    completed = items.filter((x) => x.done),
+    completedToday = localDateString(),
+    completedWeekDate = new Date(),
+    completedMonthStart = `${completedToday.slice(0, 8)}01`;
+  completedWeekDate.setDate(completedWeekDate.getDate() - ((completedWeekDate.getDay() + 6) % 7));
+  const completedWeekStart = localDateString(completedWeekDate),
+    filteredCompleted = completed.filter(({ row }) => {
+      const query = completedQuery.trim().toLowerCase(),
+        searchable = [row.id, row.modelName, row.modelCode, row.sourceId, row.destination, ...row.variants.flatMap((variant) => [variant.color, variant.size])].filter(Boolean).join(" ").toLowerCase(),
+        inPeriod = completedPeriod === "all" || (completedPeriod === "today" && row.date === completedToday) || (completedPeriod === "week" && row.date >= completedWeekStart && row.date <= completedToday) || (completedPeriod === "month" && row.date >= completedMonthStart && row.date <= completedToday) || (completedPeriod === "custom" && (!completedStart || row.date >= completedStart) && (!completedEnd || row.date <= completedEnd));
+      return inPeriod && (!query || searchable.includes(query));
+    });
+  const activeColumns = active === "Sablon/Bordir"
+      ? ["No.", "Kode / Cutting", "Model", "Vendor", "Jenis & Posisi", "Warna & Ukuran", "Dikirim", "Selesai", "Sisa", "Tagihan", "Dibayar", "Status", ...(onUpdateDecoration ? ["Aksi"] : [])]
+      : ["No.", "Kode", "Tanggal", "Model", "Sumber", "Warna & Ukuran", "Jumlah", "Tujuan / Vendor", "Status"],
+    filteredWorking = working.filter(({ row }) => {
+      const query = activeQuery.trim().toLowerCase();
+      if (!query) return true;
+      return [row.id, row.sourceId, row.poId, row.modelName, row.modelCode, row.destination, row.officer, row.decorationPosition, row.decorationDescription, ...row.variants.flatMap((variant) => [variant.color, variant.size])]
+        .filter(Boolean).join(" ").toLowerCase().includes(query);
+    }),
+    activeHiddenClasses = visibleColumns
+      .slice(0, activeColumns.length)
+      .map((visible, index) => visible ? "" : `hide-live-col-${index + 1}`)
+      .filter(Boolean)
+      .join(" "),
+    allActiveColumnsVisible = visibleColumns.slice(0, activeColumns.length).every(Boolean);
+  const toggleActiveColumn = (index: number) => setVisibleColumns((current) => current.map((visible, itemIndex) => itemIndex === index ? !visible : visible));
+  const list = (entries: typeof items) => active === "Sablon/Bordir" ? (
+    <div className="live-status-table-wrap"><table className="live-status-table decoration-job-table"><thead><tr><th>No.</th><th>Kode / Cutting</th><th>Model</th><th>Vendor</th><th>Jenis & Posisi</th><th>Warna & Ukuran</th><th>Dikirim</th><th>Selesai</th><th>Sisa</th><th>Tagihan</th><th>Dibayar</th><th>Status</th>{onUpdateDecoration && <th>Aksi</th>}</tr></thead><tbody>{entries.map(({ row, label, tone }, index) => {
+      const completedQty = Math.min(row.total, row.decorationCompleted ?? 0),
+        bill = row.total * (row.decorationRate ?? 0),
+        paid = row.paidAmount ?? 0;
+      return <tr key={row.id}>
+        <td data-label="No.">{index + 1}</td>
+        <td data-label="Kode / Cutting"><b>{row.id}</b><small>Urutan {row.decorationOrder ?? index + 1} · {row.sourceId}</small><small>{row.poId}</small></td>
+        <td data-label="Model"><b>{row.modelName}</b><small>{row.modelCode}</small></td>
+        <td data-label="Vendor"><b>{row.destination || "—"}</b></td>
+        <td data-label="Jenis & Posisi"><b>{row.decorationType === "embroidery" ? "Bordir" : "Sablon"}</b><small>{row.decorationPosition || "—"}</small><small>{row.decorationDescription || "—"}</small><small>{row.decorationRequiredBeforeBundle === false ? "Tidak menahan Bundle" : row.decorationFinalStep ? "Tahap terakhir · menahan Bundle" : "Tahap wajib berikutnya"}</small></td>
+        <td data-label="Warna & Ukuran"><span className="live-variant-list">{row.variants.map((variant) => <small key={`${variant.color}-${variant.size}`}>{variant.color} · {variant.size}: <b>{variant.qty}</b></small>)}</span></td>
+        <td data-label="Dikirim"><b>{row.total}</b></td>
+        <td data-label="Selesai"><b>{completedQty}</b></td>
+        <td data-label="Sisa"><b>{Math.max(0, row.total - completedQty)}</b></td>
+        <td data-label="Tagihan"><b>{rupiah(bill)}</b><small>{rupiah(row.decorationRate ?? 0)}/unit</small></td>
+        <td data-label="Dibayar"><b>{rupiah(paid)}</b><small>{paymentStatus(bill, paid)}</small></td>
+        <td data-label="Status"><em className={tone}>{label}</em></td>
+        {onUpdateDecoration && <td data-label="Aksi"><button type="button" className="secondary decoration-update-button" onClick={() => onUpdateDecoration(row)}>Perbarui</button></td>}
+      </tr>;
+    })}</tbody></table></div>
+  ) : (
+    <div className="live-status-table-wrap"><table className="live-status-table"><thead><tr><th>No.</th><th>Kode</th><th>Tanggal</th><th>Model</th><th>Sumber</th><th>Warna & Ukuran</th><th>Jumlah</th><th>Tujuan / Vendor</th><th>Status</th></tr></thead><tbody>{entries.map(({ row, label, tone }, index) => (
+      <tr key={row.id}>
+        <td data-label="No.">{index + 1}</td>
+        <td data-label="Kode"><b>{row.id}</b></td>
+        <td data-label="Tanggal">{row.date}</td>
+        <td data-label="Model"><b>{row.modelName}</b><small>{row.modelCode}</small></td>
+        <td data-label="Sumber">{row.sourceId || "Master Jaket"}</td>
+        <td data-label="Warna & Ukuran"><span className="live-variant-list">{row.variants.map((variant) => <small key={`${variant.color}-${variant.size}`}>{variant.color} · {variant.size}: <b>{variant.qty}</b></small>)}</span></td>
+        <td data-label="Jumlah"><b>{row.total}</b> unit</td>
+        <td data-label="Tujuan / Vendor">{row.destination || "—"}</td>
+        <td data-label="Status"><em className={tone}>{label}</em></td>
+      </tr>
+    ))}</tbody></table></div>
+  );
+  if (mode === "completed") return (
+    <section className="completed-status-panel">
+      <header><div><h2>Transaksi selesai</h2><span>Arsip ringkas pekerjaan yang sudah diteruskan.</span></div><b>{filteredCompleted.length} data</b></header>
+      <div className="completed-status-tools"><label><span>⌕</span><input value={completedQuery} onChange={(event) => setCompletedQuery(event.target.value)} placeholder="Cari kode, model, warna, size..." /></label><select value={completedPeriod} onChange={(event) => setCompletedPeriod(event.target.value as typeof completedPeriod)}><option value="today">Hari ini</option><option value="week">Minggu ini</option><option value="month">Bulan ini</option><option value="custom">Custom</option><option value="all">Semua waktu</option></select>{completedPeriod === "custom" && <><input aria-label="Tanggal mulai" type="date" value={completedStart} onChange={(event) => setCompletedStart(event.target.value)} /><input aria-label="Tanggal selesai" type="date" min={completedStart} value={completedEnd} onChange={(event) => setCompletedEnd(event.target.value)} /></>}</div>
+      {filteredCompleted.length > 0 ? list(filteredCompleted) : <div className="live-status-empty">Tidak ada transaksi selesai sesuai pencarian dan periode.</div>}
+    </section>
   );
   return (
-    <section className="live-status">
+    <>
+    <section className={`live-status mobile-${mobileView} ${activeHiddenClasses}`}>
       <header>
         <div>
-          <p className="overline">STATUS OTOMATIS</p>
-          <h2>Pekerjaan saat ini</h2>
-          <span>Status berubah mengikuti transaksi di proses berikutnya.</span>
+          <h2>{active === "Bundle" ? "Belum Bundle" : "Pekerjaan saat ini"}</h2>
         </div>
-        <b>{working.length} aktif</b>
+        <b>{filteredWorking.length} aktif</b>
       </header>
-      {working.length ? (
-        list(working)
+      {showTableToolbar && <div className="master-table-toolbar live-status-tools">
+        <div className="master-toolbar-left">
+          <label className="master-search-field"><span className="master-search-icon">⌕</span><input type="search" value={activeQuery} onChange={(event) => setActiveQuery(event.target.value)} placeholder="Cari kode, model, vendor, warna, ukuran..." /></label>
+          <div className="master-column-control">
+            <button type="button" className="master-column-button" aria-expanded={columnMenu} onClick={() => setColumnMenu((open) => !open)}><span>▥</span> Kolom</button>
+            {columnMenu && <div className="master-column-menu"><header><b>KOLOM</b><b>TAMPIL</b></header><label className="toggle-all"><span>Tampilkan semua</span><input type="checkbox" checked={allActiveColumnsVisible} onChange={() => setVisibleColumns((current) => current.map((visible, index) => index < activeColumns.length ? !allActiveColumnsVisible : visible))} /></label>{activeColumns.map((column, index) => <label key={`${active}-${column}`}><span>{column}</span><input type="checkbox" checked={visibleColumns[index]} onChange={() => toggleActiveColumn(index)} /></label>)}</div>}
+          </div>
+        </div>
+        {onAdd && addLabel && <button type="button" className="primary live-status-add" disabled={addDisabled} onClick={onAdd}>＋ {addLabel}</button>}
+      </div>}
+      {active === "Bundle" && <div className="mobile-view-switch" role="group" aria-label="Tampilan data Belum Bundle">
+        <button type="button" className={mobileView === "cards" ? "active" : ""} onClick={() => setMobileView("cards")}><span>☷</span> Kartu</button>
+        <button type="button" className={mobileView === "table" ? "active" : ""} onClick={() => setMobileView("table")}><span>▥</span> Tabel</button>
+      </div>}
+      {filteredWorking.length ? (
+        list(filteredWorking)
       ) : (
         <div className="live-status-empty">
-          Tidak ada pekerjaan aktif pada proses ini.
+          {working.length ? "Tidak ada pekerjaan yang sesuai pencarian." : "Tidak ada pekerjaan aktif pada proses ini."}
         </div>
       )}
-      {completed.length > 0 && (
-        <details>
-          <summary>
-            <span>✓</span>
-            <b>{completed.length} transaksi selesai</b>
-            <small>
-              Disembunyikan agar dashboard tetap ringkas · klik untuk melihat
-            </small>
-          </summary>
-          {list(completed)}
-        </details>
-      )}
     </section>
+    {onAdd && addLabel && <button type="button" className="mobile-floating-add" disabled={addDisabled} aria-label={addLabel} title={addLabel} onClick={onAdd}>＋</button>}
+    </>
   );
 }
 
 export default function Home() {
   const [active, setActive] = useState("Dashboard");
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [openNavGroup, setOpenNavGroup] = useState<string | null>(null);
+  function navigate(name: string) {
+    setActive(name);
+    setOpenNavGroup(
+      navGroups.find((group) =>
+        group.items.some((item) => item === name),
+      )?.id ?? null,
+    );
+  }
   const [data, setData] = useState<AppData>(initial);
+  const updatedAtRef = useRef<string | undefined>(initial.updatedAt);
+  const saveInFlightRef = useRef(false);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isSimulation, setIsSimulation] = useState(false);
@@ -1503,6 +2087,7 @@ export default function Home() {
     string | null
   >(null);
   const [editingPICCode, setEditingPICCode] = useState<string | null>(null);
+  const [editingDecorationId, setEditingDecorationId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [vendorForm, setVendorForm] = useState({
     name: "",
@@ -1512,17 +2097,30 @@ export default function Home() {
     qcMode: "internal" as QCMode,
     qcOfficer: "",
     qcLocationCode: "",
+    bankName: "",
+    accountNumber: "",
+    accountHolder: "",
+    capabilities: ["sewing"] as Array<"sewing" | "screenprint" | "embroidery">,
+    screenprintRate: 0,
+    embroideryRate: 0,
   });
   const [qcLocationForm, setQcLocationForm] = useState({
     location: "",
     recipient: "",
     phone: "",
     address: "",
+    rate: 0,
+    bankName: "",
+    accountNumber: "",
+    accountHolder: "",
   });
   const [picForm, setPicForm] = useState({
     name: "",
     role: "",
     phone: "",
+    bankName: "",
+    accountNumber: "",
+    accountHolder: "",
   });
   const [matrix, setMatrix] = useState<Variant[]>([]);
   const [qcDetails, setQcDetails] = useState<QCDetail[]>([]);
@@ -1531,44 +2129,165 @@ export default function Home() {
   const [print, setPrint] = useState<Note | null>(null);
   const [bundlePrint, setBundlePrint] = useState<RecordRow | null>(null);
   const [paymentReceipt, setPaymentReceipt] = useState<RecordRow | null>(null);
+  const [paymentKind, setPaymentKind] = useState<"vendor" | "cutting">("vendor");
   const [paymentAmount, setPaymentAmount] = useState(0);
   const [paymentDate, setPaymentDate] = useState("");
+  const [paymentPIC, setPaymentPIC] = useState("");
+  const [paymentNote, setPaymentNote] = useState("");
+  const [paymentPrint, setPaymentPrint] = useState<{
+    receipt: RecordRow;
+    payment: PaymentEntry;
+    kind: "vendor" | "cutting";
+  } | null>(null);
+  const [cuttingRateRecord, setCuttingRateRecord] = useState<RecordRow | null>(null);
+  const [cuttingRateInput, setCuttingRateInput] = useState(0);
+  const [vendorRateRecord, setVendorRateRecord] = useState<RecordRow | null>(null);
+  const [vendorRateInput, setVendorRateInput] = useState(0);
+  const [qcRateRecord, setQCRateRecord] = useState<RecordRow | null>(null);
+  const [qcRateInput, setQCRateInput] = useState(0);
+  const [weeklyDraft, setWeeklyDraft] = useState<{
+    kind: WeeklyPaymentKind;
+    payee: string;
+    periodStart: string;
+    periodEnd: string;
+    rows: RecordRow[];
+  } | null>(null);
+  const [weeklyPaymentDate, setWeeklyPaymentDate] = useState("");
+  const [weeklyPIC, setWeeklyPIC] = useState("");
+  const [weeklyRequester, setWeeklyRequester] = useState("");
+  const [weeklyNote, setWeeklyNote] = useState("");
+  const [weeklyAmount, setWeeklyAmount] = useState(0);
+  const [weeklyPrint, setWeeklyPrint] = useState<WeeklyPayment | null>(null);
   const [toast, setToast] = useState("");
   const [query, setQuery] = useState("");
 
   useEffect(() => {
-    fetch("/api/state")
+    fetch("/api/state", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((x) => {
         setIsSimulation(x.environment === "simulation");
+        updatedAtRef.current = x.updatedAt;
         setData({
           ...x,
           models: x.models ?? [],
           vendors: x.vendors ?? [],
           qcLocations: x.qcLocations ?? [],
           pics: x.pics ?? [],
+          weeklyPayments: x.weeklyPayments ?? [],
         });
       })
       .catch(() => setData(initial))
       .finally(() => setLoaded(true));
   }, []);
   async function persist(next: AppData) {
-    setData(next);
+    if (saveInFlightRef.current) {
+      flash("Penyimpanan sedang berlangsung. Mohon tunggu sebentar.");
+      return;
+    }
+    saveInFlightRef.current = true;
+    const pending = {
+      ...next,
+      updatedAt: updatedAtRef.current ?? next.updatedAt,
+    };
+    setData(pending);
     setSaving(true);
     try {
-      const response = await fetch("/api/state", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(next),
-      });
+      const send = (payload: AppData) =>
+        fetch("/api/state", {
+          method: "PUT",
+          cache: "no-store",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      let savedState = pending,
+        response = await send(savedState);
+      if (response.status === 409) {
+        const latestResponse = await fetch("/api/state", { cache: "no-store" });
+        if (!latestResponse.ok) throw new Error("DATA_CONFLICT");
+        const latest = await latestResponse.json();
+        savedState = {
+          ...mergeConflictState(data, pending, latest),
+          updatedAt: latest.updatedAt,
+        };
+        updatedAtRef.current = latest.updatedAt;
+        setData(savedState);
+        response = await send(savedState);
+        if (response.status === 409) throw new Error("DATA_CONFLICT");
+      }
       if (!response.ok) throw new Error("Gagal menyimpan");
-    } catch {
-      setData(data);
-      flash("Data gagal disimpan. Silakan coba lagi.");
+      const result = await response.json();
+      updatedAtRef.current = result.updatedAt ?? savedState.updatedAt;
+      setData({
+        ...savedState,
+        ...result,
+        models: result.models ?? savedState.models,
+        vendors: result.vendors ?? savedState.vendors,
+        qcLocations: result.qcLocations ?? savedState.qcLocations,
+        pics: result.pics ?? savedState.pics,
+        records: result.records ?? savedState.records,
+        notes: result.notes ?? savedState.notes,
+        weeklyPayments: result.weeklyPayments ?? savedState.weeklyPayments,
+        updatedAt: result.updatedAt ?? savedState.updatedAt,
+      });
+      if (savedState !== pending)
+        flash("Data terbaru digabungkan dan transaksi berhasil disimpan.");
+    } catch (error) {
+      if (!(error instanceof Error && error.message === "DATA_CONFLICT")) {
+        setData(data);
+      }
+      flash(
+        error instanceof Error && error.message === "DATA_CONFLICT"
+          ? "Data berubah di perangkat atau tab lain. Muat ulang halaman sebelum menyimpan kembali."
+          : "Data gagal disimpan. Silakan coba lagi.",
+      );
       throw new Error("Data gagal disimpan");
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
+  }
+  async function updateDecorationJob(row: RecordRow) {
+    const completedInput = window.prompt(
+      `Jumlah selesai untuk ${row.id} (maksimal ${row.total} unit)`,
+      String(row.decorationCompleted ?? 0),
+    );
+    if (completedInput === null) return;
+    const completed = Number(completedInput.replace(/\D/g, ""));
+    if (!Number.isFinite(completed) || completed < 0 || completed > row.total) {
+      flash(`Jumlah selesai harus antara 0 sampai ${row.total} unit.`);
+      return;
+    }
+    const bill = row.total * (row.decorationRate ?? 0),
+      paidInput = window.prompt(
+        `Total pembayaran untuk ${row.id} (maksimal ${rupiah(bill)})`,
+        String(row.paidAmount ?? 0),
+      );
+    if (paidInput === null) return;
+    const paid = Number(paidInput.replace(/\D/g, ""));
+    if (!Number.isFinite(paid) || paid < 0 || paid > bill) {
+      flash(`Pembayaran harus antara Rp 0 sampai ${rupiah(bill)}.`);
+      return;
+    }
+    const nextRows = (data.records["Sablon/Bordir"] ?? []).map((item) =>
+      item.id === row.id
+        ? {
+            ...item,
+            decorationCompleted: completed,
+            paidAmount: paid,
+            status:
+              completed >= item.total
+                ? "Selesai"
+                : completed > 0
+                  ? "Selesai sebagian"
+                  : "Di vendor dekorasi",
+          }
+        : item,
+    );
+    await persist({
+      ...data,
+      records: { ...data.records, "Sablon/Bordir": nextRows },
+    });
+    flash(`Progres ${row.id} berhasil diperbarui.`);
   }
   async function resetSimulation() {
     if (!isSimulation) return;
@@ -1583,14 +2302,16 @@ export default function Home() {
       const response = await fetch("/api/state", { method: "DELETE" });
       if (!response.ok) throw new Error("Gagal mengosongkan simulasi");
       const next = await response.json();
+      updatedAtRef.current = next.updatedAt;
       setData({
         ...next,
         models: next.models ?? [],
         vendors: next.vendors ?? [],
         qcLocations: next.qcLocations ?? [],
         pics: next.pics ?? [],
+        weeklyPayments: next.weeklyPayments ?? [],
       });
-      setActive("Dashboard");
+      navigate("Dashboard");
       flash("Transaksi simulasi dikosongkan. Data produksi tetap aman.");
     } catch {
       flash("Data simulasi gagal dikosongkan.");
@@ -1606,22 +2327,48 @@ export default function Home() {
       ),
       bill =
         paymentReceipt.total *
-        (paymentReceipt.sewingRate ?? shipment?.sewingRate ?? 0);
-    if (paymentAmount < 0 || paymentAmount > bill) {
-      flash("Nominal pembayaran tidak boleh melebihi nilai setoran.");
+        (paymentKind === "cutting"
+          ? paymentReceipt.cuttingRate ?? 0
+          : paymentReceipt.sewingRate ?? shipment?.sewingRate ?? 0);
+    const previousPayments = legacyPayment(paymentReceipt),
+      previouslyPaid = paidForReceipt(paymentReceipt),
+      remaining = Math.max(0, bill - previouslyPaid);
+    if (paymentAmount <= 0 || paymentAmount > remaining) {
+      flash("Nominal pembayaran harus lebih dari nol dan tidak melebihi sisa tagihan.");
       return;
     }
+    if (!paymentPIC.trim()) {
+      flash("Pilih PIC finance untuk pembayaran ini.");
+      return;
+    }
+    const payment: PaymentEntry = {
+        id:
+          paymentKind === "cutting"
+            ? nextCuttingPaymentId(data, paymentDate)
+            : nextVendorPaymentId(data, paymentDate),
+        date: paymentDate,
+        amount: paymentAmount,
+        pic: paymentPIC,
+        note: paymentNote.trim(),
+      },
+      paymentHistory = [...previousPayments, payment],
+      paidAmount = previouslyPaid + paymentAmount;
     const next = {
       ...data,
       records: {
         ...data.records,
-        "Penerimaan Gudang": (data.records["Penerimaan Gudang"] ?? []).map(
+        [paymentKind === "cutting" ? "Cutting" : "Penerimaan Gudang"]: (
+          data.records[
+            paymentKind === "cutting" ? "Cutting" : "Penerimaan Gudang"
+          ] ?? []
+        ).map(
           (receipt) =>
             receipt.id === paymentReceipt.id
               ? {
                   ...receipt,
-                  paidAmount: paymentAmount,
-                  paymentDate: paymentAmount > 0 ? paymentDate : "",
+                  paidAmount,
+                  paymentDate,
+                  paymentHistory,
                 }
               : receipt,
         ),
@@ -1629,7 +2376,315 @@ export default function Home() {
     };
     await persist(next);
     setPaymentReceipt(null);
-    flash(`Pembayaran ${paymentReceipt.id} diperbarui.`);
+    setPaymentPrint({
+      receipt: { ...paymentReceipt, paidAmount, paymentDate, paymentHistory },
+      payment,
+      kind: paymentKind,
+    });
+    flash(`Pembayaran ${payment.id} berhasil dicatat.`);
+  }
+  async function voidReceiptPayment(
+    receipt: RecordRow,
+    payment: PaymentEntry,
+  ) {
+    if (payment.voided) return;
+    const reason = window.prompt(
+      `Alasan pembatalan ${payment.id}. Bukti tetap tersimpan dalam riwayat:`,
+    );
+    if (!reason?.trim()) return;
+    const history = legacyPayment(receipt).map((item) =>
+        item.id === payment.id
+          ? { ...item, voided: true, voidReason: reason.trim() }
+          : item,
+      ),
+      paidAmount = history.reduce(
+        (total, item) => total + (item.voided ? 0 : item.amount),
+        0,
+      ),
+      lastActive = [...history].reverse().find((item) => !item.voided),
+      next = {
+        ...data,
+        records: {
+          ...data.records,
+          [receipt.stage === "Cutting" ? "Cutting" : "Penerimaan Gudang"]: (
+            data.records[
+              receipt.stage === "Cutting" ? "Cutting" : "Penerimaan Gudang"
+            ] ?? []
+          ).map(
+            (item) =>
+              item.id === receipt.id
+                ? {
+                    ...item,
+                    paymentHistory: history,
+                    paidAmount,
+                    paymentDate: lastActive?.date ?? "",
+                  }
+                : item,
+          ),
+        },
+      };
+    await persist(next);
+    flash(`${payment.id} dibatalkan dengan jejak audit.`);
+  }
+  async function updateCuttingRate(e: FormEvent) {
+    e.preventDefault();
+    if (!cuttingRateRecord) return;
+    const cuttingRate = cuttingRateInput;
+    if (!Number.isFinite(cuttingRate) || cuttingRate <= 0) {
+      flash("Tarif cutting harus lebih dari nol.");
+      return;
+    }
+    await persist({
+      ...data,
+      records: {
+        ...data.records,
+        Cutting: (data.records.Cutting ?? []).map((item) =>
+          item.id === cuttingRateRecord.id ? { ...item, cuttingRate } : item,
+        ),
+      },
+    });
+    flash(`Tarif ${cuttingRateRecord.id} diperbarui menjadi ${rupiah(cuttingRate)} per unit.`);
+    setCuttingRateRecord(null);
+  }
+  async function updateVendorRate(e: FormEvent) {
+    e.preventDefault();
+    if (!vendorRateRecord) return;
+    const sewingRate = vendorRateInput;
+    if (!Number.isFinite(sewingRate) || sewingRate <= 0) {
+      flash("Tarif jahit harus lebih dari nol.");
+      return;
+    }
+    await persist({
+      ...data,
+      records: {
+        ...data.records,
+        "Penerimaan Gudang": (data.records["Penerimaan Gudang"] ?? []).map(
+          (item) =>
+            item.id === vendorRateRecord.id ? { ...item, sewingRate } : item,
+        ),
+      },
+    });
+    flash(`Tarif ${vendorRateRecord.id} diperbarui menjadi ${rupiah(sewingRate)} per unit.`);
+    setVendorRateRecord(null);
+  }
+  async function updateQCRate(e: FormEvent) {
+    e.preventDefault();
+    if (!qcRateRecord) return;
+    const qcRate = qcRateInput;
+    if (!Number.isFinite(qcRate) || qcRate <= 0) {
+      flash("Tarif QC harus lebih dari nol.");
+      return;
+    }
+    await persist({
+      ...data,
+      records: {
+        ...data.records,
+        "Quality Control": (data.records["Quality Control"] ?? []).map(
+          (item) => item.id === qcRateRecord.id ? { ...item, qcRate } : item,
+        ),
+      },
+    });
+    flash(`Tarif ${qcRateRecord.id} diperbarui menjadi ${rupiah(qcRate)} per unit.`);
+    setQCRateRecord(null);
+  }
+  async function setDecorationRate(row: RecordRow) {
+    const input = window.prompt(
+      `Tarif per unit untuk ${row.id}`,
+      String(row.decorationRate ?? 0),
+    );
+    if (input === null) return;
+    const decorationRate = parseRupiahInput(input);
+    if (decorationRate <= 0) {
+      flash("Tarif Sablon/Bordir harus lebih dari nol.");
+      return;
+    }
+    await persist({
+      ...data,
+      records: {
+        ...data.records,
+        "Sablon/Bordir": (data.records["Sablon/Bordir"] ?? []).map((item) =>
+          item.id === row.id ? { ...item, decorationRate } : item,
+        ),
+      },
+    });
+    flash(`Tarif ${row.id} diperbarui menjadi ${rupiah(decorationRate)} per unit.`);
+  }
+  function openWeeklyPayment(
+    kind: WeeklyPaymentKind,
+    payee: string,
+    rows: RecordRow[],
+    periodStart: string,
+    periodEnd: string,
+  ) {
+    setWeeklyDraft({
+      kind,
+      payee,
+      rows,
+      periodStart,
+      periodEnd,
+    });
+    setWeeklyPaymentDate(periodEnd);
+    setWeeklyPIC(
+      data.pics.find((pic) => pic.active && /herdita/i.test(pic.name))?.name ??
+        data.pics.find((pic) => pic.active && /finance|keuangan/i.test(pic.role))?.name ??
+        data.pics.find((pic) => pic.active)?.name ??
+        "",
+    );
+    setWeeklyRequester(
+      data.pics.find((pic) => pic.active && /ceceng/i.test(pic.name))?.name ??
+        data.pics.find((pic) => pic.active && /produksi|pengaju/i.test(pic.role))?.name ??
+        data.pics.find((pic) => pic.active)?.name ??
+        "",
+    );
+    setWeeklyNote("");
+    setWeeklyAmount(0);
+  }
+  async function saveWeeklyPayment(e: FormEvent) {
+    e.preventDefault();
+    if (!weeklyDraft || !weeklyPIC || !weeklyRequester) return;
+      const lines = weeklyDraft.rows.map((row) => {
+        const rate =
+          weeklyDraft.kind === "cutting"
+            ? row.cuttingRate ?? 0
+            : weeklyDraft.kind === "qc"
+              ? row.qcRate ?? 0
+              : weeklyDraft.kind === "decoration"
+                ? row.decorationRate ?? 0
+                : row.sewingRate ?? 0;
+        return {
+          recordId: row.id,
+          modelName: row.modelName,
+          units: row.total,
+          rate,
+          amount: row.total * rate,
+        };
+      }),
+      totalAmount = lines.reduce((total, line) => total + line.amount, 0);
+    if (!lines.length || lines.some((line) => line.rate <= 0)) {
+      flash("Semua pekerjaan harus memiliki tarif sebelum direkap.");
+      return;
+    }
+    const paidBefore = weeklyDraft.kind === "vendor" || weeklyDraft.kind === "decoration"
+      ? weeklyDraft.rows.reduce(
+          (total, receipt) => total + paidForReceipt(receipt),
+          0,
+        )
+      : weeklyPaidAmount(
+          data.weeklyPayments,
+          weeklyDraft.kind,
+          weeklyDraft.payee,
+          weeklyDraft.periodStart,
+          weeklyDraft.periodEnd,
+        ) + (weeklyDraft.kind === "cutting"
+          ? weeklyDraft.rows.reduce((total, row) => total + paidForReceipt(row), 0)
+          : 0);
+    if (weeklyAmount <= 0 || weeklyAmount > totalAmount - paidBefore) {
+      flash("Nominal pembayaran harus lebih dari nol dan tidak melebihi sisa tagihan.");
+      return;
+    }
+    const account =
+      data.vendors.find((item) => item.name.toLowerCase() === weeklyDraft.payee.toLowerCase()) ??
+      data.qcLocations.find((item) => item.recipient.toLowerCase() === weeklyDraft.payee.toLowerCase()) ??
+      data.pics.find((item) => item.name.toLowerCase() === weeklyDraft.payee.toLowerCase());
+    const payment: WeeklyPayment = {
+      id: nextWeeklyPaymentId(data, weeklyDraft.kind, weeklyPaymentDate),
+      kind: weeklyDraft.kind,
+      periodStart: weeklyDraft.periodStart,
+      periodEnd: weeklyDraft.periodEnd,
+      payee: weeklyDraft.payee,
+      lines,
+      totalUnits: lines.reduce((total, line) => total + line.units, 0),
+      totalAmount,
+      paymentAmount: weeklyAmount,
+      paidBefore,
+      paymentDate: weeklyPaymentDate,
+      pic: weeklyPIC,
+      requester: weeklyRequester,
+      bankName: account?.bankName,
+      accountNumber: account?.accountNumber,
+      accountHolder: account?.accountHolder || weeklyDraft.payee,
+      note: weeklyNote.trim(),
+    };
+    const nextData: AppData = {
+      ...data,
+      weeklyPayments: [...data.weeklyPayments, payment],
+    };
+    if (weeklyDraft.kind === "vendor" || weeklyDraft.kind === "decoration") {
+      let amountLeft = weeklyAmount;
+      const recordStage = weeklyDraft.kind === "decoration" ? "Sablon/Bordir" : "Penerimaan Gudang";
+      nextData.records = {
+        ...data.records,
+        [recordStage]: (data.records[recordStage] ?? []).map(
+          (receipt) => {
+            const draftRow = weeklyDraft.rows.find((row) => row.id === receipt.id);
+            if (!draftRow || amountLeft <= 0) return receipt;
+            const rate = weeklyDraft.kind === "decoration" ? draftRow.decorationRate ?? 0 : draftRow.sewingRate ?? 0,
+              bill = receipt.total * rate,
+              paid = paidForReceipt(receipt),
+              allocation = Math.min(Math.max(0, bill - paid), amountLeft);
+            if (allocation <= 0) return receipt;
+            amountLeft -= allocation;
+            return {
+              ...receipt,
+              paidAmount: paid + allocation,
+              paymentDate: weeklyPaymentDate,
+              paymentHistory: [
+                ...legacyPayment(receipt),
+                {
+                  id: payment.id,
+                  date: weeklyPaymentDate,
+                  amount: allocation,
+                  pic: weeklyPIC,
+                  note: `Rekap gabungan ${weeklyDraft.kind === "decoration" ? "vendor dekorasi" : "vendor jahit"}${weeklyNote.trim() ? ` · ${weeklyNote.trim()}` : ""}`,
+                },
+              ],
+            };
+          },
+        ),
+      };
+    }
+    await persist(nextData);
+    setWeeklyDraft(null);
+    flash(`Pembayaran ${payment.id} berhasil dibukukan.`);
+  }
+  async function voidWeeklyPayment(payment: WeeklyPayment) {
+    if (payment.voided) return;
+    const reason = window.prompt(
+      `Alasan pembatalan ${payment.id}. Bukti tetap tersimpan dalam riwayat:`,
+    );
+    if (!reason?.trim()) return;
+    const nextData: AppData = {
+      ...data,
+      weeklyPayments: data.weeklyPayments.map((item) =>
+        item.id === payment.id
+          ? { ...item, voided: true, voidReason: reason.trim() }
+          : item,
+      ),
+    };
+    if (payment.kind === "vendor" || payment.kind === "decoration") {
+      const recordStage = payment.kind === "decoration" ? "Sablon/Bordir" : "Penerimaan Gudang";
+      nextData.records = {
+        ...data.records,
+        [recordStage]: (data.records[recordStage] ?? []).map(
+          (receipt) => {
+            const history = legacyPayment(receipt).map((entry) =>
+                entry.id === payment.id
+                  ? { ...entry, voided: true, voidReason: reason.trim() }
+                  : entry,
+              ),
+              paidAmount = history.reduce(
+                (total, entry) => total + (entry.voided ? 0 : entry.amount),
+                0,
+              );
+            return history.some((entry) => entry.id === payment.id)
+              ? { ...receipt, paymentHistory: history, paidAmount }
+              : receipt;
+          },
+        ),
+      };
+    }
+    await persist(nextData);
+    flash(`${payment.id} dibatalkan dengan jejak audit.`);
   }
   function flash(x: string) {
     setToast(x);
@@ -1649,10 +2704,11 @@ export default function Home() {
     );
   }
   function remainingFor(source: RecordRow) {
+    const baseVariants = decorationReleaseVariants(source);
     const allocated = (data.records.Bundle ?? [])
       .filter((x) => x.sourceId === source.id)
       .flatMap((x) => x.variants);
-    return source.variants.map((v) => ({
+    return baseVariants.map((v) => ({
       ...v,
       qty: Math.max(
         0,
@@ -1662,6 +2718,45 @@ export default function Home() {
             .reduce((n, a) => n + a.qty, 0),
       ),
     }));
+  }
+  function decorationRequired(source: RecordRow) {
+    const process =
+      source.decorationProcess ??
+      data.models.find((model) => model.code === source.modelCode)
+        ?.decorationProcess ??
+      "none";
+    return process !== "none";
+  }
+  function decorationReleaseVariants(source: RecordRow) {
+    if (!decorationRequired(source)) return source.variants.map((variant) => ({ ...variant }));
+    const jobs = (data.records["Sablon/Bordir"] ?? []).filter(
+      (row) => row.sourceId === source.id && row.decorationRequiredBeforeBundle !== false,
+    );
+    if (jobs.length === 0) return source.variants.map((variant) => ({ ...variant, qty: 0 }));
+    const expected = source.decorationProcess ?? data.models.find((model) => model.code === source.modelCode)?.decorationProcess ?? "none";
+    const hasScreenprint = jobs.some((row) => row.decorationType === "screenprint");
+    const hasEmbroidery = jobs.some((row) => row.decorationType === "embroidery");
+    const expectedTypesReady =
+      expected === "screenprint" ? hasScreenprint
+      : expected === "embroidery" ? hasEmbroidery
+      : expected === "both" ? hasScreenprint && hasEmbroidery
+      : true;
+    const usesExplicitFinalStep = jobs.some((row) => typeof row.decorationFinalStep === "boolean");
+    const workflowClosed = usesExplicitFinalStep
+      ? jobs.some((row) => row.decorationFinalStep === true)
+      : true;
+    const everyJobComplete = jobs.every((row) => (row.decorationCompleted ?? 0) >= row.total);
+    return expectedTypesReady && workflowClosed && everyJobComplete
+      ? source.variants.map((variant) => ({ ...variant }))
+      : source.variants.map((variant) => ({ ...variant, qty: 0 }));
+  }
+  function remainingDecoration(
+    source: RecordRow,
+    _type: "screenprint" | "embroidery" = form.decorationType,
+    _position: string = form.decorationPosition,
+  ) {
+    // Setiap sub-pekerjaan adalah jasa berbeda atas unit fisik yang sama.
+    return source.variants.map((variant) => ({ ...variant }));
   }
   function remainingAtPO(source: RecordRow) {
     const cut = (data.records.Cutting ?? [])
@@ -1684,6 +2779,12 @@ export default function Home() {
       ),
     }));
   }
+  function remainingToQC(source: RecordRow) {
+    const sent = (data.records["Pengiriman QC"] ?? [])
+      .filter((x) => x.sourceId === source.id)
+      .flatMap((x) => x.variants);
+    return subtractVariants(source.variants, sent);
+  }
   function vendorForShipment(source?: RecordRow) {
     return data.vendors.find((v) => v.name === source?.destination);
   }
@@ -1692,18 +2793,14 @@ export default function Home() {
         (x) => x.id === receipt?.sourceId,
       ),
       vendor = vendorForShipment(shipment);
-    return (
-      data.qcLocations.find(
-        (x) => x.code === vendor?.qcLocationCode && x.active,
-      ) ?? data.qcLocations.find((x) => x.active)
+    const configured = data.qcLocations.find(
+      (x) => x.code === vendor?.qcLocationCode && x.active,
     );
+    return configured ?? data.qcLocations.find((x) => x.active);
   }
   function receiptUsesVendorQC(receipt: RecordRow) {
-    if (receipt.qcMode === "vendor") return true;
-    const shipment = (data.records["Pengiriman Vendor"] ?? []).find(
-      (x) => x.id === receipt.sourceId,
-    );
-    return vendorForShipment(shipment)?.qcMode === "vendor";
+    void receipt;
+    return false;
   }
   function vendorFromQC(source: RecordRow) {
     const sent = (data.records["Pengiriman QC"] ?? []).find(
@@ -1804,18 +2901,22 @@ export default function Home() {
   }
   function sourceAvailable(stage: string, source: RecordRow) {
     if (stage === "Cutting") return sum(remainingAtPO(source)) > 0;
+    if (stage === "Sablon/Bordir") return true;
     if (stage === "Pengiriman Vendor")
-      return !(data.records["Pengiriman Vendor"] ?? []).some(
-        (x) => x.sourceId === source.id,
+      return (
+        !(data.records["Pengiriman Vendor"] ?? []).some(
+          (x) => x.sourceId === source.id,
+        )
       );
     if (stage === "Penerimaan Gudang")
       return sum(remainingAtVendor(source)) > 0;
     if (stage === "Pengiriman QC")
       return (
         !receiptUsesVendorQC(source) &&
-        !(data.records["Pengiriman QC"] ?? []).some(
-          (x) => x.sourceId === source.id,
-        )
+        !(data.records["Quality Control"] ?? []).some(
+          (x) => x.sourceId === source.id && x.qcMode === "vendor",
+        ) &&
+        sum(remainingToQC(source)) > 0
       );
     if (stage === "Quality Control")
       return !(data.records["Quality Control"] ?? []).some(
@@ -1854,6 +2955,7 @@ export default function Home() {
     return true;
   }
   function openRecord() {
+    setEditingDecorationId(null);
     const model = data.models[0];
     const info = stageInfo[active];
     const sources = info.source ? sourcesForStage(active) : [];
@@ -1892,13 +2994,15 @@ export default function Home() {
           : 0,
     });
     const available = first
-      ? active === "Cutting"
-        ? remainingAtPO(first)
-        : active === "Bundle"
+      ? active === "Bundle"
           ? remainingFor(first)
-          : active === "Penerimaan Gudang"
-            ? remainingAtVendor(first)
-            : routedVariants(active, first)
+        : active === "Sablon/Bordir"
+          ? remainingDecoration(first)
+        : active === "Penerimaan Gudang"
+          ? remainingAtVendor(first)
+          : active === "Pengiriman QC"
+            ? remainingToQC(first)
+          : routedVariants(active, first)
       : model
         ? buildMatrix(model)
         : [];
@@ -1922,6 +3026,28 @@ export default function Home() {
         ? autoBundle(available, Math.min(50, sum(available)))
         : available,
     );
+    setModal("record");
+  }
+  function openDecorationEdit(row: RecordRow) {
+    setEditingDecorationId(row.id);
+    setForm({
+      ...emptyForm,
+      date: row.date,
+      code: row.modelCode,
+      sourceId: row.sourceId,
+      destination: row.destination ?? "",
+      officer: row.officer ?? data.pics.find((item) => item.active)?.name ?? "",
+      note: row.note ?? "",
+      paidAmount: paidForReceipt(row),
+      decorationType: row.decorationType ?? "screenprint",
+      decorationPosition: row.decorationPosition ?? "Badan belakang",
+      decorationDescription: row.decorationDescription ?? "",
+      decorationRate: row.decorationRate ?? 0,
+      decorationCompleted: row.decorationCompleted ?? 0,
+      decorationRequiredBeforeBundle: row.decorationRequiredBeforeBundle !== false,
+      decorationFinalStep: row.decorationFinalStep !== false,
+    });
+    setMatrix(row.variants);
     setModal("record");
   }
   function selectSource(id: string) {
@@ -1969,8 +3095,12 @@ export default function Home() {
           ? remainingAtPO(source)
           : active === "Bundle"
             ? remainingFor(source)
+            : active === "Sablon/Bordir"
+              ? remainingDecoration(source)
             : active === "Penerimaan Gudang"
               ? remainingAtVendor(source)
+              : active === "Pengiriman QC"
+                ? remainingToQC(source)
               : routedVariants(active, source);
       const wanted = Math.min(50, sum(available));
       setBundleQty(wanted);
@@ -2026,7 +3156,7 @@ export default function Home() {
       flash("Bundle yang dikirim bersamaan harus berasal dari model yang sama.");
       return;
     }
-    setActive("Pengiriman Vendor");
+    navigate("Pengiriman Vendor");
     setSelectedBundleIds(bundles.map((bundle) => bundle.id));
     setMatrix(mergeVariants(bundles));
     setForm({
@@ -2076,8 +3206,8 @@ export default function Home() {
     }
     const codeLocked =
       !!editingCode &&
-      (data.records["Order Produksi"] ?? []).some(
-        (x) => x.modelCode === editingCode,
+      ["Order Produksi", "Cutting"].some((stage) =>
+        (data.records[stage] ?? []).some((x) => x.modelCode === editingCode),
       );
     const finalCode = (codeLocked ? editingCode : form.code)
       .trim()
@@ -2092,6 +3222,7 @@ export default function Home() {
       colors,
       sizes,
       active: true,
+      decorationProcess: form.decorationProcess,
     };
     if (
       data.models.some((x) => x.code !== editingCode && x.code === model.code)
@@ -2122,11 +3253,11 @@ export default function Home() {
       flash("Nama vendor sudah digunakan.");
       return;
     }
-    if (vendorForm.qcMode === "vendor" && !vendorForm.qcOfficer.trim()) {
-      flash("Nama petugas wajib diisi untuk QC langsung di vendor.");
+    if (vendorForm.capabilities.length === 0) {
+      flash("Pilih minimal satu kemampuan vendor.");
       return;
     }
-    if (vendorForm.qcMode === "internal" && !vendorForm.qcLocationCode) {
+    if (vendorForm.capabilities.includes("sewing") && !vendorForm.qcLocationCode) {
       flash("Pilih tujuan QC internal untuk vendor ini.");
       return;
     }
@@ -2140,11 +3271,15 @@ export default function Home() {
       phone: vendorForm.phone,
       address: vendorForm.address,
       active: true,
-      qcMode: vendorForm.qcMode,
-      qcOfficer:
-        vendorForm.qcMode === "vendor" ? vendorForm.qcOfficer.trim() : "",
-      qcLocationCode:
-        vendorForm.qcMode === "internal" ? vendorForm.qcLocationCode : "",
+      qcMode: "internal",
+      qcOfficer: "",
+      qcLocationCode: vendorForm.qcLocationCode,
+      bankName: vendorForm.bankName.trim(),
+      accountNumber: vendorForm.accountNumber.trim(),
+      accountHolder: vendorForm.accountHolder.trim(),
+      capabilities: vendorForm.capabilities,
+      screenprintRate: vendorForm.screenprintRate,
+      embroideryRate: vendorForm.embroideryRate,
     };
     const records =
       old && old.name !== name
@@ -2180,6 +3315,10 @@ export default function Home() {
   async function addQCLocation(e: FormEvent) {
     e.preventDefault();
     const location = qcLocationForm.location.trim();
+    if (qcLocationForm.rate <= 0) {
+      flash("Tarif QC per unit harus lebih dari nol.");
+      return;
+    }
     if (
       data.qcLocations.some(
         (x) =>
@@ -2250,6 +3389,9 @@ export default function Home() {
       name,
       role: picForm.role.trim(),
       phone: picForm.phone.trim(),
+      bankName: picForm.bankName.trim(),
+      accountNumber: picForm.accountNumber.trim(),
+      accountHolder: picForm.accountHolder.trim(),
       active: true,
     };
     const old = data.pics.find((x) => x.code === editingPICCode);
@@ -2318,9 +3460,59 @@ export default function Home() {
   }
   async function addRecord(e: FormEvent) {
     e.preventDefault();
+    if (saveInFlightRef.current || saving) {
+      flash("Data sedang disimpan. Tidak perlu menekan tombol dua kali.");
+      return;
+    }
     const info = stageInfo[active];
     const model = data.models.find((x) => x.code === form.code);
-    if (!model || sum(matrix) <= 0) return;
+    if (!form.date) {
+      flash("Tanggal transaksi wajib dipilih.");
+      return;
+    }
+    if (!model) {
+      flash("Model jaket dari transaksi sumber tidak ditemukan.");
+      return;
+    }
+    if (info.source && !form.sourceId) {
+      flash(`Pilih sumber dari ${info.source} terlebih dahulu.`);
+      return;
+    }
+    if (sum(matrix) <= 0) {
+      flash("Jumlah proses harus lebih dari nol.");
+      return;
+    }
+    if ((info.move || active === "Bundle" || active === "Cutting") && !form.officer.trim()) {
+      flash("Pilih PIC atau penanggung jawab terlebih dahulu.");
+      return;
+    }
+    if (info.move && active !== "Penerimaan Gudang" && !form.destination.trim()) {
+      flash("Tujuan atau lokasi wajib dipilih.");
+      return;
+    }
+    if (active === "Pengiriman QC" && !form.recipient.trim()) {
+      flash("Penerima QC belum tersedia. Periksa Master QC.");
+      return;
+    }
+    if (active === "Cutting" && form.cuttingRate <= 0) {
+      flash("Tarif cutting per unit harus lebih dari nol.");
+      return;
+    }
+    if (active === "Pengiriman Vendor" && form.sewingRate <= 0) {
+      flash("Tarif jahit per unit harus lebih dari nol.");
+      return;
+    }
+    if (active === "Pengiriman QC") {
+      const receipt = (data.records["Penerimaan Gudang"] ?? []).find(
+        (row) => row.id === form.sourceId,
+      );
+      if (!receipt || !qcLocationForReceipt(receipt)) {
+        flash(
+          "Tujuan QC vendor belum diatur. Pilih Master QC pada data vendor terlebih dahulu.",
+        );
+        return;
+      }
+    }
     if (active === "Pengiriman Vendor") {
       const bundles = (data.records.Bundle ?? []).filter(
         (x) =>
@@ -2362,6 +3554,7 @@ export default function Home() {
         bundleId: bundle.id,
         deliveryNoteId,
         sewingRate: form.sewingRate,
+        decorationProcess: bundle.decorationProcess ?? model.decorationProcess ?? "none",
       }));
       const variants = mergeVariants(bundles),
         note: Note = {
@@ -2402,15 +3595,6 @@ export default function Home() {
       flash("Bundle ini sudah dikirim dan tidak dapat dipilih kembali.");
       return;
     }
-    if (
-      active === "Pengiriman QC" &&
-      (data.records["Pengiriman QC"] ?? []).some(
-        (x) => x.sourceId === form.sourceId,
-      )
-    ) {
-      flash("Penerimaan gudang ini sudah dikirim ke QC.");
-      return;
-    }
     if (active === "Quality Control" || active === "QC Ulang") {
       if (
         (data.records[active] ?? []).some((x) => x.sourceId === form.sourceId)
@@ -2431,23 +3615,74 @@ export default function Home() {
         return;
       }
     }
-    if (active === "Cutting") {
-      const source = (data.records["Order Produksi"] ?? []).find(
-        (x) => x.id === form.sourceId,
+    if (active === "Sablon/Bordir") {
+      const source = (data.records.Cutting ?? []).find(
+        (row) => row.id === form.sourceId,
       );
-      if (!source) return;
-      const available = remainingAtPO(source);
+      if (!source) {
+        flash("Pilih kode Cutting untuk pekerjaan dekorasi.");
+        return;
+      }
+      const selectedVendor = data.vendors.find((vendor) => vendor.name === form.destination);
+      if (!selectedVendor || !(selectedVendor.capabilities ?? ["sewing"]).includes(form.decorationType)) {
+        flash(`Pilih vendor yang memiliki kemampuan ${form.decorationType === "screenprint" ? "Sablon" : "Bordir"}.`);
+        return;
+      }
+      const editingDecoration = editingDecorationId
+        ? (data.records["Sablon/Bordir"] ?? []).find((row) => row.id === editingDecorationId)
+        : undefined;
+      if (!editingDecoration && (data.records.Bundle ?? []).some((row) => row.sourceId === source.id)) {
+        flash("Cutting ini sudah masuk Bundle. Tambahkan pekerjaan dekorasi sebelum proses Bundle dimulai.");
+        return;
+      }
+      if (editingDecoration && paidForReceipt(editingDecoration) > 0 && (
+        editingDecoration.destination !== form.destination ||
+        editingDecoration.decorationType !== form.decorationType ||
+        (editingDecoration.decorationRate ?? 0) !== form.decorationRate
+      )) {
+        flash("Vendor, jenis, dan tarif tidak dapat diubah karena pekerjaan ini sudah memiliki pembayaran.");
+        return;
+      }
+      if (!form.decorationDescription.trim()) {
+        flash("Isi keterangan desain Sablon/Bordir.");
+        return;
+      }
+      if (!form.decorationPosition.trim() || form.decorationPosition === "Posisi lainnya") {
+        flash("Isi posisi Sablon/Bordir pada jaket.");
+        return;
+      }
+      const duplicate = (data.records["Sablon/Bordir"] ?? []).find((row) =>
+        row.id !== editingDecoration?.id &&
+        row.sourceId === source.id &&
+        row.decorationType === form.decorationType &&
+        (row.decorationPosition ?? "").trim().toLowerCase() === form.decorationPosition.trim().toLowerCase() &&
+        (row.decorationDescription ?? "").trim().toLowerCase() === form.decorationDescription.trim().toLowerCase() &&
+        (row.destination ?? "").trim().toLowerCase() === form.destination.trim().toLowerCase()
+      );
+      if (duplicate) {
+        flash(`Pekerjaan yang sama sudah tercatat sebagai ${duplicate.id}. Perbarui pekerjaan tersebut atau bedakan keterangannya.`);
+        return;
+      }
+      const available = remainingDecoration(source, form.decorationType, form.decorationPosition);
       if (
         matrix.some(
-          (v) =>
-            v.qty >
-            (available.find((a) => a.color === v.color && a.size === v.size)
-              ?.qty ?? 0),
+          (variant) =>
+            variant.qty >
+            (available.find(
+              (item) =>
+                item.color === variant.color && item.size === variant.size,
+            )?.qty ?? 0),
         )
       ) {
-        flash(
-          "Jumlah Cutting melebihi sisa PO pada warna atau ukuran tertentu.",
-        );
+        flash("Jumlah pekerjaan tidak boleh melebihi jumlah fisik pada Cutting sumber.");
+        return;
+      }
+      if (form.decorationCompleted > sum(matrix)) {
+        flash("Jumlah selesai tidak boleh melebihi jumlah yang dikirim ke vendor dekorasi.");
+        return;
+      }
+      if (form.paidAmount > sum(matrix) * form.decorationRate) {
+        flash("Pembayaran tidak boleh melebihi total tagihan dekorasi.");
         return;
       }
     }
@@ -2456,7 +3691,9 @@ export default function Home() {
         "Order Produksi",
         "Cutting",
         "Bundle",
+        "Sablon/Bordir",
         "Penerimaan Gudang",
+        "Pengiriman QC",
         "Quality Control",
         "QC Ulang",
       ].includes(active)
@@ -2465,6 +3702,12 @@ export default function Home() {
         (x) => x.id === form.sourceId,
       );
       if (!source) return;
+      if (!sourceAvailable(active, source)) {
+        flash(
+          `Hasil ${source.id} sudah dipakai pada proses ${active.toLowerCase()} dan tidak dapat digunakan dua kali.`,
+        );
+        return;
+      }
       const expected = routedVariants(active, source);
       const mismatch =
         expected.some(
@@ -2495,6 +3738,10 @@ export default function Home() {
         flash("Nominal pembayaran tidak boleh melebihi nilai setoran.");
         return;
       }
+      if (form.paidAmount > 0 && !form.paymentPIC.trim()) {
+        flash("Pilih PIC finance untuk pembayaran pertama.");
+        return;
+      }
       const available = remainingAtVendor(source);
       if (
         matrix.some(
@@ -2507,21 +3754,25 @@ export default function Home() {
         flash("Jumlah diterima melebihi sisa barang di vendor.");
         return;
       }
-      if (vendorForShipment(source)?.qcMode === "vendor") {
-        if (qcDetails.some((x) => x.passed + x.reject + x.repair !== x.qty)) {
-          flash(
-            "Hasil QC vendor harus terbagi tepat ke lolos, repair, dan reject.",
-          );
-          return;
-        }
-        if (
-          qcDetails.some(
-            (x) => (x.reject > 0 || x.repair > 0) && !x.note.trim(),
-          )
-        ) {
-          flash("Catatan wajib untuk hasil repair atau reject dari QC vendor.");
-          return;
-        }
+    }
+    if (active === "Pengiriman QC") {
+      const source = (data.records["Penerimaan Gudang"] ?? []).find(
+        (x) => x.id === form.sourceId,
+      );
+      if (!source) return;
+      const available = remainingToQC(source);
+      if (
+        matrix.some(
+          (v) =>
+            v.qty >
+            (available.find((a) => a.color === v.color && a.size === v.size)
+              ?.qty ?? 0),
+        )
+      ) {
+        flash(
+          "Jumlah kirim QC melebihi sisa penerimaan pada warna atau ukuran tertentu.",
+        );
+        return;
       }
     }
     if (active === "Bundle") {
@@ -2544,26 +3795,25 @@ export default function Home() {
       }
     }
     const cuttingSource =
-        active === "Bundle"
+        active === "Bundle" || active === "Sablon/Bordir"
           ? (data.records.Cutting ?? []).find((x) => x.id === form.sourceId)
           : undefined,
-      batchNo =
-        active === "Cutting"
-          ? (data.records.Cutting ?? []).filter(
-              (x) => x.sourceId === form.sourceId,
-            ).length + 1
-          : cuttingSource?.batchNo,
+      batchNo = active === "Cutting" ? 1 : cuttingSource?.batchNo,
       bundleNo =
         active === "Bundle"
           ? (data.records.Bundle ?? []).filter(
               (x) => x.sourceId === form.sourceId,
             ).length + 1
           : undefined;
-    const poIdForCode =
-      active === "Cutting" ? form.sourceId : cuttingSource?.poId;
+    const poIdForCode = cuttingSource?.poId;
     const poSequence = poIdForCode?.split("-").at(-1) ?? "000";
     const poToken = poLotToken(poIdForCode);
     const monthlyPOCount = (data.records["Order Produksi"] ?? []).filter(
+      (x) =>
+        x.modelCode === model.code &&
+        periodYYMM(x.date) === periodYYMM(form.date),
+    ).length;
+    const monthlyCuttingCount = (data.records.Cutting ?? []).filter(
       (x) =>
         x.modelCode === model.code &&
         periodYYMM(x.date) === periodYYMM(form.date),
@@ -2574,12 +3824,16 @@ export default function Home() {
     const inheritedPOId = tracePOId(recordSource);
     const inheritedBundleId = traceBundleId(recordSource);
     const recordId =
-      active === "Order Produksi"
+      active === "Sablon/Bordir" && editingDecorationId
+        ? editingDecorationId
+      : active === "Order Produksi"
         ? `PO-${model.code}-${periodYYMM(form.date)}-${String(monthlyPOCount + 1).padStart(3, "0")}`
         : active === "Cutting"
-          ? `CUT-${model.code}-${poToken || `P${poSequence}`}-C${String(batchNo).padStart(2, "0")}`
+          ? `CUT-${model.code}-${periodYYMM(form.date)}-${String(monthlyCuttingCount + 1).padStart(3, "0")}`
           : active === "Bundle"
             ? `BDL-${model.code}-${poToken || `P${poSequence}`}-C${String(batchNo ?? 1).padStart(2, "0")}-B${String(bundleNo).padStart(3, "0")}`
+            : active === "Sablon/Bordir"
+              ? `${form.decorationType === "screenprint" ? "SAB" : "BDR"}-${model.code}-${poToken || `P${poSequence}`}-C${String(recordSource?.batchNo ?? 1).padStart(2, "0")}-${String((data.records["Sablon/Bordir"] ?? []).filter((row) => row.sourceId === form.sourceId && row.decorationType === form.decorationType).length + 1).padStart(2, "0")}`
             : nextLotCode(
                 active,
                 info.prefix,
@@ -2606,20 +3860,30 @@ export default function Home() {
           )
         : undefined;
     const receiptVendor = vendorForShipment(receiptShipment);
-    const directVendorQC =
-      active === "Penerimaan Gudang" && receiptVendor?.qcMode === "vendor";
+    const directVendorQC = false;
+    const selectedQCLocation = directVendorQC
+      ? data.qcLocations.find(
+          (location) => location.code === receiptVendor?.qcLocationCode,
+        )
+      : active === "Quality Control" || active === "QC Ulang"
+        ? data.qcLocations.find(
+            (location) => location.location === recordSource?.destination,
+          )
+        : undefined;
     const record: RecordRow = {
       id: recordId,
       stage: active,
       date: form.date,
       modelCode: model.code,
       modelName: model.name,
-      sourceId: form.sourceId,
+      sourceId: active === "Cutting" ? "" : form.sourceId,
       variants: matrix.filter((x) => x.qty > 0),
       total: sum(matrix),
       status:
         active === "Quality Control" || active === "QC Ulang"
           ? "Selesai diperiksa"
+          : active === "Sablon/Bordir"
+            ? form.decorationCompleted >= sum(matrix) ? "Selesai" : form.decorationCompleted > 0 ? "Selesai sebagian" : "Di vendor dekorasi"
           : directVendorQC
             ? "Diterima · sudah QC vendor"
             : active === "Penerimaan Gudang"
@@ -2651,11 +3915,22 @@ export default function Home() {
             ? receiptShipment?.destination
             : undefined,
       qcMode: directVendorQC ? "vendor" : undefined,
-      qcOfficer: directVendorQC ? receiptVendor?.qcOfficer : undefined,
+      qcOfficer:
+        active === "Quality Control" || active === "QC Ulang"
+          ? selectedQCLocation?.recipient
+          : directVendorQC
+            ? receiptVendor?.qcOfficer
+            : undefined,
+      qcRate:
+        active === "Quality Control" || directVendorQC
+          ? selectedQCLocation?.rate ?? 0
+          : active === "QC Ulang"
+            ? 0
+          : undefined,
       officer: form.officer,
       poId:
         active === "Cutting"
-          ? form.sourceId
+          ? recordId
           : active === "Bundle"
             ? cuttingSource?.poId
             : (receiptShipment?.poId ?? tracePOId(recordSource)),
@@ -2667,17 +3942,72 @@ export default function Home() {
         active === "Penerimaan Gudang"
           ? receiptShipment?.sewingRate
           : form.sewingRate || recordSource?.sewingRate,
+      cuttingRate: active === "Cutting" ? form.cuttingRate : undefined,
       paidAmount:
-        active === "Penerimaan Gudang" ? form.paidAmount : undefined,
+        active === "Sablon/Bordir" || active === "Penerimaan Gudang"
+          ? form.paidAmount
+          : undefined,
       paymentDate:
         active === "Penerimaan Gudang" && form.paidAmount > 0
           ? form.paymentDate || form.date
           : undefined,
+      paymentHistory:
+        active === "Penerimaan Gudang" && form.paidAmount > 0
+          ? [
+              {
+                id: nextVendorPaymentId(data, form.paymentDate || form.date),
+                date: form.paymentDate || form.date,
+                amount: form.paidAmount,
+                pic: form.paymentPIC || form.officer || "Belum dicatat",
+                note: form.paymentNote.trim(),
+              },
+            ]
+          : undefined,
+      decorationProcess:
+        recordSource?.decorationProcess ?? model.decorationProcess ?? "none",
+      decorationType: active === "Sablon/Bordir" ? form.decorationType : undefined,
+      decorationPosition: active === "Sablon/Bordir" ? form.decorationPosition : undefined,
+      decorationDescription: active === "Sablon/Bordir" ? form.decorationDescription.trim() : undefined,
+      decorationRate: active === "Sablon/Bordir" ? form.decorationRate : undefined,
+      decorationCompleted: active === "Sablon/Bordir" ? form.decorationCompleted : undefined,
+      decorationOrder: active === "Sablon/Bordir"
+        ? (editingDecorationId
+            ? (data.records["Sablon/Bordir"] ?? []).find((item) => item.id === editingDecorationId)?.decorationOrder
+            : undefined) ?? (data.records["Sablon/Bordir"] ?? []).filter((item) => item.sourceId === form.sourceId).length + 1
+        : undefined,
+      decorationRequiredBeforeBundle: active === "Sablon/Bordir" ? form.decorationRequiredBeforeBundle : undefined,
+      decorationFinalStep: active === "Sablon/Bordir" ? form.decorationRequiredBeforeBundle && form.decorationFinalStep : undefined,
     };
+    const previousDecoration = active === "Sablon/Bordir" && editingDecorationId
+      ? (data.records["Sablon/Bordir"] ?? []).find((item) => item.id === editingDecorationId)
+      : undefined;
+    const savedRecord = previousDecoration
+      ? {
+          ...previousDecoration,
+          ...record,
+          id: previousDecoration.id,
+          paymentHistory: previousDecoration.paymentHistory,
+          paidAmount: paidForReceipt(previousDecoration) > 0
+            ? previousDecoration.paidAmount
+            : record.paidAmount,
+        }
+      : record;
     let records = {
       ...data.records,
-      [active]: [...(data.records[active] ?? []), record],
+      [active]: previousDecoration
+        ? (data.records[active] ?? []).map((item) => item.id === previousDecoration.id ? savedRecord : item)
+        : [...(data.records[active] ?? []), savedRecord],
     };
+    if (active === "Sablon/Bordir" && savedRecord.decorationRequiredBeforeBundle !== false && savedRecord.decorationFinalStep) {
+      records = {
+        ...records,
+        "Sablon/Bordir": (records["Sablon/Bordir"] ?? []).map((item) =>
+          item.sourceId === savedRecord.sourceId && item.id !== savedRecord.id
+            ? { ...item, decorationFinalStep: false }
+            : item,
+        ),
+      };
+    }
     if (directVendorQC) {
       const qcId = nextLotCode(
         "Quality Control",
@@ -2703,26 +4033,25 @@ export default function Home() {
         "Quality Control": [...(records["Quality Control"] ?? []), qcRecord],
       };
     }
-    let notes = data.notes;
+    let notes = previousDecoration
+      ? data.notes.map((note) => note.sourceId === previousDecoration.id
+          ? { ...note, date: form.date, to: form.destination, variants: savedRecord.variants, total: savedRecord.total, officer: form.officer || note.officer, note: form.note }
+          : note)
+      : data.notes;
     const createsNote = [
+      "Sablon/Bordir",
       "Pengiriman Vendor",
-      "Penerimaan Gudang",
       "Pengiriman QC",
       "Rework",
       "Penerimaan Rework",
-    ].includes(active);
+    ].includes(active) && !previousDecoration;
     if (createsNote && info.move) {
       const [fromDefault, toDefault] = info.move.split(" → ");
-      const vendorShipment = (data.records["Pengiriman Vendor"] ?? []).find(
-        (x) => x.id === form.sourceId,
-      );
       const reworkShipment = (data.records.Rework ?? []).find(
         (x) => x.id === form.sourceId,
       );
       const from =
-        active === "Penerimaan Gudang"
-          ? vendorShipment?.destination || fromDefault
-          : active === "Penerimaan Rework"
+        active === "Penerimaan Rework"
             ? reworkShipment?.destination || fromDefault
             : fromDefault;
       const note: Note = {
@@ -2753,8 +4082,13 @@ export default function Home() {
     }
     await persist({ ...data, records, notes });
     setModal(null);
+    setEditingDecorationId(null);
     flash(
-      `${record.id} tersimpan${createsNote ? " dan surat jalan dibuat otomatis" : ""}.`,
+      previousDecoration
+        ? `${record.id} berhasil diperbarui tanpa mengubah identitas transaksi.`
+      : active === "Penerimaan Gudang"
+        ? `${record.id} tersimpan sebagai bukti penerimaan · referensi ${record.deliveryNoteId || "surat jalan pengiriman"}.`
+        : `${record.id} tersimpan${createsNote ? " dan surat jalan dibuat otomatis" : ""}.`,
     );
   }
   const qcOutcomeSources = [
@@ -2795,9 +4129,13 @@ export default function Home() {
   );
   const modelCodeLocked =
     !!editingCode &&
-    (data.records["Order Produksi"] ?? []).some(
-      (x) => x.modelCode === editingCode,
+    ["Order Produksi", "Cutting"].some((stage) =>
+      (data.records[stage] ?? []).some((x) => x.modelCode === editingCode),
     );
+  const editingDecorationRecord = editingDecorationId
+    ? (data.records["Sablon/Bordir"] ?? []).find((item) => item.id === editingDecorationId)
+    : undefined;
+  const decorationFinancialLocked = !!editingDecorationRecord && paidForReceipt(editingDecorationRecord) > 0;
 
   return (
     <main className="app-shell">
@@ -2823,22 +4161,65 @@ export default function Home() {
             ×
           </button>
         </div>
-        <p>OPERASIONAL</p>
-        <nav>
-          {nav.map(([i, n]) => (
+        <p>MENU UTAMA</p>
+        <nav className="grouped-nav">
+          <button
+            className={`nav-direct ${active === "Dashboard" ? "active" : ""}`}
+            onClick={() => {
+              navigate("Dashboard");
+              setMobileMenu(false);
+            }}
+          >
+            <i>▦</i><span>Dashboard</span>
+          </button>
+          {navGroups.map((group, index) => {
+            const expanded = openNavGroup === group.id;
+            const groupActive = group.items.some((name) => name === active);
+            const showSection = index === 0 || navGroups[index - 1].section !== group.section;
+            return (
+              <Fragment key={group.id}>
+              {showSection && <p className="nav-section-label">{group.section}</p>}
+              <div className={`nav-group ${expanded ? "expanded" : ""}`}>
+                <button
+                  type="button"
+                  className={`nav-group-trigger ${groupActive ? "group-active" : ""}`}
+                  aria-expanded={expanded}
+                  onClick={() => setOpenNavGroup(expanded ? null : group.id)}
+                >
+                  <i>{group.icon}</i><span>{group.label}</span><b aria-hidden="true">⌄</b>
+                </button>
+                {expanded && (
+                  <div className="nav-submenu">
+                    {group.items.map((name) => (
+                      <button
+                        key={name}
+                        className={active === name ? "active" : ""}
+                        onClick={() => {
+                          navigate(name);
+                          setMobileMenu(false);
+                        }}
+                      >
+                        <i>{navIcon(name)}</i><span>{name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              </Fragment>
+            );
+          })}
+          <p className="nav-section-label">DOKUMEN</p>
+          <div className="nav-bottom-link">
             <button
-              key={n}
-              className={active === n ? "active" : ""}
+              className={`nav-direct ${active === "Surat Jalan" ? "active" : ""}`}
               onClick={() => {
-                setActive(n);
+                navigate("Surat Jalan");
                 setMobileMenu(false);
               }}
             >
-              <i>{i}</i>
-              {n}
-              {n === "Surat Jalan" && <em>{data.notes.length}</em>}
+              <i>▤</i><span>Surat Jalan</span><em>{data.notes.filter((note) => note.process !== "Vendor Jahit → Gudang").length}</em>
             </button>
-          ))}
+          </div>
         </nav>
         <div className="user-card">
           <span>AR</span>
@@ -2866,7 +4247,7 @@ export default function Home() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Cari PO, bundle, surat jalan..."
+              placeholder="Cari batch Cutting, bundle, surat jalan..."
             />
           </label>
           <span className={`sync ${saving ? "busy" : ""}`}>
@@ -2893,7 +4274,7 @@ export default function Home() {
           ) : (
             <>
               {active === "Dashboard" && (
-                <Dashboard data={data} go={setActive} />
+                <Dashboard data={data} go={navigate} />
               )}
               {active === "Master Jaket" && (
                 <Master
@@ -2913,6 +4294,7 @@ export default function Home() {
                       name: m.name,
                       colors: m.colors.join(", "),
                       sizes: m.sizes.join(", "),
+                      decorationProcess: m.decorationProcess ?? "none",
                     });
                     setModal("master");
                   }}
@@ -2934,6 +4316,12 @@ export default function Home() {
                       qcOfficer: "",
                       qcLocationCode:
                         data.qcLocations.find((x) => x.active)?.code ?? "",
+                      bankName: "",
+                      accountNumber: "",
+                      accountHolder: "",
+                      capabilities: ["sewing"],
+                      screenprintRate: 0,
+                      embroideryRate: 0,
                     });
                     setModal("vendor");
                   }}
@@ -2950,6 +4338,12 @@ export default function Home() {
                         v.qcLocationCode ??
                         data.qcLocations.find((x) => x.active)?.code ??
                         "",
+                      bankName: v.bankName ?? "",
+                      accountNumber: v.accountNumber ?? "",
+                      accountHolder: v.accountHolder ?? "",
+                      capabilities: v.capabilities ?? ["sewing"],
+                      screenprintRate: v.screenprintRate ?? 0,
+                      embroideryRate: v.embroideryRate ?? 0,
                     });
                     setModal("vendor");
                   }}
@@ -2966,6 +4360,10 @@ export default function Home() {
                       recipient: "",
                       phone: "",
                       address: "",
+                      rate: 0,
+                      bankName: "",
+                      accountNumber: "",
+                      accountHolder: "",
                     });
                     setModal("qcLocation");
                   }}
@@ -2976,6 +4374,10 @@ export default function Home() {
                       recipient: x.recipient,
                       phone: x.phone,
                       address: x.address,
+                      rate: x.rate ?? 0,
+                      bankName: x.bankName ?? "",
+                      accountNumber: x.accountNumber ?? "",
+                      accountHolder: x.accountHolder ?? "",
                     });
                     setModal("qcLocation");
                   }}
@@ -2987,7 +4389,7 @@ export default function Home() {
                   items={data.pics}
                   onAdd={() => {
                     setEditingPICCode(null);
-                    setPicForm({ name: "", role: "", phone: "" });
+                    setPicForm({ name: "", role: "", phone: "", bankName: "", accountNumber: "", accountHolder: "" });
                     setModal("pic");
                   }}
                   onEdit={(item) => {
@@ -2996,6 +4398,9 @@ export default function Home() {
                       name: item.name,
                       role: item.role,
                       phone: item.phone,
+                      bankName: item.bankName ?? "",
+                      accountNumber: item.accountNumber ?? "",
+                      accountHolder: item.accountHolder ?? "",
                     });
                     setModal("pic");
                   }}
@@ -3006,46 +4411,106 @@ export default function Home() {
                 <div
                   className={`live-stage ${active === "Quality Control" ? "qc-stage" : active === "Rework" ? "rework-stage" : ""}`}
                 >
-                  <StagePage
-                    active={active}
-                    rows={current}
-                    sources={sourcesForStage(active).filter(
-                      (x) =>
-                        active !== "Pengiriman QC" || x.qcMode !== "vendor",
-                    )}
-                    allRecords={data.records}
-                    sourceCount={
-                      sourcesForStage(active).filter(
-                        (x) =>
-                          active !== "Pengiriman QC" || x.qcMode !== "vendor",
-                      ).length
-                    }
-                    onAdd={openRecord}
-                    onPrintBundle={setBundlePrint}
-                    onSendBundles={openBundleShipment}
-                    onUpdatePayment={(receipt) => {
-                      setPaymentReceipt(receipt);
-                      setPaymentAmount(receipt.paidAmount ?? 0);
-                      setPaymentDate(
-                        receipt.paymentDate ??
-                          new Date().toISOString().slice(0, 10),
-                      );
-                    }}
-                  />
-                  {(active === "Quality Control" || active === "QC Ulang") && (
-                    <QCSummary rows={current} allRecords={data.records} />
-                  )}{" "}
-                  {active === "Rework" && (
-                    <ReworkSummary
-                      qcRows={data.records["Quality Control"] ?? []}
-                      rows={current}
-                    />
+                  {["Cutting", "Sablon/Bordir", "Bundle"].includes(active) && (
+                    <div className="production-stage-breadcrumb">
+                      <span>{active === "Sablon/Bordir" ? "Sablon & Bordir" : "Produksi"}</span><b>›</b><strong>{active}</strong>
+                    </div>
+                  )}
+                  {active === "Cutting" && (
+                    <div className="stage-top-action">
+                      <button
+                        className="primary"
+                        type="button"
+                        onClick={openRecord}
+                      >
+                        ＋ Catat hasil Cutting
+                      </button>
+                    </div>
                   )}
                   <LiveStageStatus
                     active={active}
                     rows={current}
                     allRecords={data.records}
+                    mode="active"
+                    onUpdateDecoration={active === "Sablon/Bordir" ? openDecorationEdit : undefined}
+                    showTableToolbar={tableToolbarStages.has(active)}
+                    onAdd={tableToolbarStages.has(active) ? openRecord : undefined}
+                    addLabel={tableToolbarStages.has(active) ? stagePrimaryActionLabel(active) : undefined}
+                    addDisabled={active === "Bundle" && !sourcesForStage(active).some((source) => sum(remainingFor(source)) > 0)}
                   />
+                  <StagePage
+                    active={active}
+                    rows={current}
+                    sources={sourcesForStage(active)}
+                    allRecords={data.records}
+                    weeklyPayments={data.weeklyPayments}
+                    qcLocations={data.qcLocations}
+                    sourceCount={
+                      sourcesForStage(active).length
+                    }
+                    onAdd={openRecord}
+                    onPrintBundle={setBundlePrint}
+                    onSendBundles={openBundleShipment}
+                    onUpdatePayment={(receipt, kind) => {
+                      setPaymentReceipt(receipt);
+                      setPaymentKind(kind);
+                      setPaymentAmount(0);
+                      setPaymentDate(
+                        new Date().toISOString().slice(0, 10),
+                      );
+                      setPaymentPIC(data.pics.find((pic) => pic.active)?.name ?? "");
+                      setPaymentNote("");
+                    }}
+                    onPrintPayment={(receipt, payment, kind) =>
+                      setPaymentPrint({ receipt, payment, kind })
+                    }
+                    onVoidPayment={voidReceiptPayment}
+                    onSetCuttingRate={(cutting) => {
+                      setCuttingRateRecord(cutting);
+                      setCuttingRateInput(cutting.cuttingRate ?? 0);
+                    }}
+                    onSetVendorRate={(receipt) => {
+                      const shipment = (data.records["Pengiriman Vendor"] ?? []).find(
+                        (item) => item.id === receipt.sourceId,
+                      );
+                      setVendorRateRecord(receipt);
+                      setVendorRateInput(receipt.sewingRate ?? shipment?.sewingRate ?? 0);
+                    }}
+                    onSetQCRate={(inspection) => {
+                      const shipment = (data.records["Pengiriman QC"] ?? []).find(
+                          (item) => item.id === inspection.sourceId,
+                        ),
+                        masterRate = data.qcLocations.find(
+                          (location) =>
+                            location.location === shipment?.destination ||
+                            location.recipient === inspection.qcOfficer,
+                        )?.rate ?? 0;
+                      setQCRateRecord(inspection);
+                      setQCRateInput(inspection.qcRate ?? masterRate);
+                    }}
+                    onSetDecorationRate={setDecorationRate}
+                    onCreateWeeklyPayment={openWeeklyPayment}
+                    onPrintWeeklyPayment={setWeeklyPrint}
+                    onVoidWeeklyPayment={voidWeeklyPayment}
+                  />
+                  {(active === "Quality Control" || active === "QC Ulang") && !qcOperationalStages.has(active) && (
+                    <QCSummary rows={current} allRecords={data.records} />
+                  )}{" "}
+                  {active === "Rework" && !qcOperationalStages.has(active) && (
+                    <ReworkSummary
+                      qcRows={data.records["Quality Control"] ?? []}
+                      rows={current}
+                    />
+                  )}
+                  {!['Cutting', 'Sablon/Bordir', 'Bundle', 'Pengiriman Vendor', 'Penerimaan Gudang'].includes(active) && !qcOperationalStages.has(active) && (
+                    <LiveStageStatus
+                      active={active}
+                      rows={current}
+                      allRecords={data.records}
+                      mode="completed"
+                      onUpdateDecoration={active === "Sablon/Bordir" ? openDecorationEdit : undefined}
+                    />
+                  )}
                 </div>
               )}
               {active === "Karantina Reject" && (
@@ -3059,7 +4524,8 @@ export default function Home() {
                   onPrint={setPrint}
                 />
               )}
-              {active === "Laporan" && <Reports data={data} />}
+              {active === "Laporan Produksi" && <Reports key="production" mode="production" data={data} go={navigate} />}
+              {active === "Laporan Keuangan" && <Reports key="finance" mode="finance" data={data} go={navigate} />}
             </>
           )}
         </div>
@@ -3100,8 +4566,8 @@ export default function Home() {
                 />
                 <small>
                   {modelCodeLocked
-                    ? "Kode terkunci karena sudah digunakan dalam PO."
-                    : "Dibuat otomatis, tetapi masih dapat diganti sebelum digunakan dalam PO."}
+                    ? "Kode terkunci karena sudah digunakan dalam transaksi produksi."
+                    : "Dibuat otomatis, tetapi masih dapat diganti sebelum digunakan dalam Cutting."}
                 </small>
               </label>
               <label>
@@ -3145,6 +4611,26 @@ export default function Home() {
                   value={form.sizes}
                   onChange={(e) => setForm({ ...form, sizes: e.target.value })}
                 />
+              </label>
+              <label className="full">
+                Proses setelah bundle
+                <select
+                  value={form.decorationProcess}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      decorationProcess: e.target.value as DecorationProcess,
+                    })
+                  }
+                >
+                  <option value="none">Tanpa sablon/bordir</option>
+                  <option value="screenprint">Sablon</option>
+                  <option value="embroidery">Bordir</option>
+                  <option value="both">Sablon + bordir</option>
+                </select>
+                <small>
+                  Model yang memakai proses ini wajib diselesaikan sebelum bundle tersedia untuk vendor jahit.
+                </small>
               </label>
             </div>
             <div className="master-preview">
@@ -3246,39 +4732,76 @@ export default function Home() {
                   }
                 />
               </label>
-              <label className="full">
-                Metode Quality Control
-                <select
-                  value={vendorForm.qcMode}
-                  onChange={(e) =>
-                    setVendorForm({
-                      ...vendorForm,
-                      qcMode: e.target.value as QCMode,
-                      qcOfficer:
-                        e.target.value === "internal"
-                          ? ""
-                          : vendorForm.qcOfficer,
-                      qcLocationCode:
-                        e.target.value === "internal"
-                          ? vendorForm.qcLocationCode ||
-                            data.qcLocations.find((x) => x.active)?.code ||
-                            ""
-                          : "",
-                    })
-                  }
-                >
-                  <option value="internal">
-                    QC internal setelah barang masuk gudang
-                  </option>
-                  <option value="vendor">QC langsung di lokasi vendor</option>
-                </select>
-                <small>
-                  Vendor dengan QC langsung tidak masuk antrean pengiriman QC
-                  internal.
-                </small>
+              <fieldset className="full vendor-capability-field">
+                <legend>Kemampuan vendor</legend>
+                {([
+                  ["sewing", "Jahit"],
+                  ["screenprint", "Sablon"],
+                  ["embroidery", "Bordir"],
+                ] as const).map(([value, label]) => (
+                  <label key={value}>
+                    <input
+                      type="checkbox"
+                      checked={vendorForm.capabilities.includes(value)}
+                      onChange={(event) => setVendorForm({
+                        ...vendorForm,
+                        capabilities: event.target.checked
+                          ? [...vendorForm.capabilities, value]
+                          : vendorForm.capabilities.filter((item) => item !== value),
+                      })}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </fieldset>
+              {vendorForm.capabilities.includes("screenprint") && (
+                <label>
+                  Tarif rekomendasi Sablon / unit
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Contoh: 8000"
+                    value={rupiahInput(vendorForm.screenprintRate)}
+                    onFocus={(event) => event.currentTarget.select()}
+                    onChange={(event) => setVendorForm({ ...vendorForm, screenprintRate: parseRupiahInput(event.target.value) })}
+                  />
+                  <small>Tarif awal otomatis; tetap bisa diubah pada transaksi.</small>
+                </label>
+              )}
+              {vendorForm.capabilities.includes("embroidery") && (
+                <label>
+                  Tarif rekomendasi Bordir / unit
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Contoh: 5000"
+                    value={rupiahInput(vendorForm.embroideryRate)}
+                    onFocus={(event) => event.currentTarget.select()}
+                    onChange={(event) => setVendorForm({ ...vendorForm, embroideryRate: parseRupiahInput(event.target.value) })}
+                  />
+                  <small>Tarif awal otomatis; tetap bisa diubah pada transaksi.</small>
+                </label>
+              )}
+              <label>
+                Bank pembayaran
+                <input placeholder="Contoh: BCA" value={vendorForm.bankName} onChange={(e) => setVendorForm({ ...vendorForm, bankName: e.target.value })} />
               </label>
-              {vendorForm.qcMode === "internal" ? (
-                <label className="full">
+              <label>
+                Nomor rekening
+                <input inputMode="numeric" placeholder="Nomor rekening vendor" value={vendorForm.accountNumber} onChange={(e) => setVendorForm({ ...vendorForm, accountNumber: e.target.value.replace(/\D/g, "") })} />
+              </label>
+              <label className="full">
+                Nama pemilik rekening
+                <input placeholder="Nama sesuai rekening" value={vendorForm.accountHolder} onChange={(e) => setVendorForm({ ...vendorForm, accountHolder: e.target.value })} />
+              </label>
+              {vendorForm.capabilities.includes("sewing") && <label className="full">
+                Metode Quality Control
+                <input readOnly value="QC terpisah setelah barang masuk gudang" />
+                <small>
+                  Semua vendor mengikuti alur Penerimaan Gudang → Pengiriman QC → Quality Control.
+                </small>
+              </label>}
+              {vendorForm.capabilities.includes("sewing") && <label className="full">
                   Tujuan & penerima QC
                   <select
                     required
@@ -3300,26 +4823,9 @@ export default function Home() {
                       ))}
                   </select>
                   <small>
-                    Kelola daftar tujuan QC dari bagian Pengaturan QC di halaman
-                    Master Vendor.
+                    Kelola tujuan, petugas, tarif, dan rekening melalui Master QC.
                   </small>
-                </label>
-              ) : (
-                <label className="full">
-                  Petugas QC di vendor
-                  <input
-                    required
-                    placeholder="Contoh: Abah"
-                    value={vendorForm.qcOfficer}
-                    onChange={(e) =>
-                      setVendorForm({
-                        ...vendorForm,
-                        qcOfficer: e.target.value,
-                      })
-                    }
-                  />
-                </label>
-              )}
+              </label>}
             </div>
             <div className="form-actions">
               <button type="button" onClick={() => setModal(null)}>
@@ -3333,7 +4839,11 @@ export default function Home() {
 
       {modal === "record" && (
         <div className="overlay">
-          <form className="form-modal matrix-modal" onSubmit={addRecord}>
+          <form
+            className="form-modal matrix-modal"
+            onSubmit={addRecord}
+            noValidate
+          >
             <button
               className="close"
               type="button"
@@ -3343,7 +4853,9 @@ export default function Home() {
             </button>
             <p className="overline">{active.toUpperCase()}</p>
             <h2>
-              {active === "Order Produksi"
+              {editingDecorationRecord
+                ? `Edit ${editingDecorationRecord.id}`
+              : active === "Order Produksi"
                 ? "Buat PO Produksi"
                 : `Catat ${stageInfo[active].title}`}
             </h2>
@@ -3357,7 +4869,7 @@ export default function Home() {
                   onChange={(e) => setForm({ ...form, date: e.target.value })}
                 />
               </label>
-              {active === "Order Produksi" ? (
+              {active === "Order Produksi" || active === "Cutting" ? (
                 <label>
                   Model jaket
                   <select
@@ -3381,9 +4893,12 @@ export default function Home() {
                 </label>
               ) : (
                 <label className="full">
-                  Sumber dari {stageInfo[active].source}
+                  {active === "Penerimaan Gudang"
+                    ? "Surat jalan pengiriman vendor"
+                    : `Sumber dari ${stageInfo[active].source}`}
                   <select
                     required
+                    disabled={!!editingDecorationRecord}
                     value={form.sourceId}
                     onChange={(e) => selectSource(e.target.value)}
                   >
@@ -3396,13 +4911,19 @@ export default function Home() {
                       )
                       .map((x) => (
                         <option key={x.id} value={x.id}>
-                          {x.id} · {x.modelName} ·{" "}
+                          {active === "Penerimaan Gudang" && x.deliveryNoteId
+                            ? `${x.deliveryNoteId} · ${x.id}`
+                            : x.id} · {x.modelName} ·{" "}
                           {active === "Cutting"
                             ? sum(remainingAtPO(x))
                             : active === "Bundle"
                               ? sum(remainingFor(x))
+                              : active === "Sablon/Bordir"
+                                ? sum(remainingDecoration(x))
                               : active === "Penerimaan Gudang"
                                 ? sum(remainingAtVendor(x))
+                                : active === "Pengiriman QC"
+                                  ? sum(remainingToQC(x))
                                 : active === "Rework"
                                   ? sum(routedVariants(active, x))
                                   : active === "Karantina Reject"
@@ -3416,6 +4937,86 @@ export default function Home() {
                   </select>
                 </label>
               )}
+              {active === "Sablon/Bordir" && (
+                <>
+                  {editingDecorationRecord && (
+                    <div className="full form-inline-notice">
+                      {decorationFinancialLocked
+                        ? "Pekerjaan sudah memiliki pembayaran. Vendor, jenis, dan tarif dikunci; progres dan keterangan masih dapat diperbarui."
+                        : "Identitas kode dan sumber Cutting tetap dipertahankan agar penelusuran tidak terputus."}
+                    </div>
+                  )}
+                  <label>
+                    Jenis pekerjaan
+                    <select
+                      disabled={decorationFinancialLocked}
+                      value={form.decorationType}
+                      onChange={(event) => {
+                        const decorationType = event.target.value as "screenprint" | "embroidery";
+                        const source = (data.records.Cutting ?? []).find((row) => row.id === form.sourceId);
+                        const vendor = data.vendors.find((item) => item.name === form.destination);
+                        const recommendedRate = decorationType === "screenprint" ? vendor?.screenprintRate : vendor?.embroideryRate;
+                        setForm({ ...form, decorationType, decorationRate: recommendedRate ?? form.decorationRate });
+                        if (source) setMatrix(remainingDecoration(source, decorationType, form.decorationPosition));
+                      }}
+                    >
+                      <option value="screenprint">Sablon</option>
+                      <option value="embroidery">Bordir</option>
+                    </select>
+                  </label>
+                  <label>
+                    Posisi pada jaket
+                    <select
+                      value={["Dada kiri", "Dada kanan", "Badan depan", "Badan belakang", "Saku depan", "Lengan kiri", "Lengan kanan", "Kerah"].includes(form.decorationPosition) ? form.decorationPosition : "__manual__"}
+                      onChange={(event) => {
+                        const decorationPosition = event.target.value === "__manual__" ? "" : event.target.value;
+                        const source = (data.records.Cutting ?? []).find((row) => row.id === form.sourceId);
+                        setForm({ ...form, decorationPosition });
+                        if (source) setMatrix(remainingDecoration(source, form.decorationType, decorationPosition));
+                      }}
+                    >
+                      {["Dada kiri", "Dada kanan", "Badan depan", "Badan belakang", "Saku depan", "Lengan kiri", "Lengan kanan", "Kerah"].map((position) => <option key={position}>{position}</option>)}
+                      <option value="__manual__">Ketik posisi lain…</option>
+                    </select>
+                  </label>
+                  {!["Dada kiri", "Dada kanan", "Badan depan", "Badan belakang", "Saku depan", "Lengan kiri", "Lengan kanan", "Kerah"].includes(form.decorationPosition) && (
+                    <label>
+                      Posisi lainnya
+                      <input
+                        required
+                        autoFocus
+                        placeholder="Contoh: Punggung atas atau manset kiri"
+                        value={form.decorationPosition}
+                        onChange={(event) => {
+                          const decorationPosition = event.target.value;
+                          const source = (data.records.Cutting ?? []).find((row) => row.id === form.sourceId);
+                          setForm({ ...form, decorationPosition });
+                          if (source) setMatrix(remainingDecoration(source, form.decorationType, decorationPosition));
+                        }}
+                      />
+                    </label>
+                  )}
+                  <label className="full">
+                    Keterangan desain
+                    <input
+                      required
+                      placeholder="Contoh: Logo Owncrave ukuran 8 cm"
+                      value={form.decorationDescription}
+                      onChange={(event) => setForm({ ...form, decorationDescription: event.target.value })}
+                    />
+                  </label>
+                  <div className="full decoration-workflow-options">
+                    <label className="decoration-check-option">
+                      <input type="checkbox" checked={form.decorationRequiredBeforeBundle} onChange={(event) => setForm({ ...form, decorationRequiredBeforeBundle: event.target.checked, decorationFinalStep: event.target.checked ? form.decorationFinalStep : false })} />
+                      <span><b>Wajib selesai sebelum Bundle</b><small>Pekerjaan ini harus selesai sebelum barang dapat dibundel.</small></span>
+                    </label>
+                    <label className="decoration-check-option">
+                      <input type="checkbox" disabled={!form.decorationRequiredBeforeBundle} checked={form.decorationFinalStep} onChange={(event) => setForm({ ...form, decorationFinalStep: event.target.checked })} />
+                      <span><b>Pekerjaan terakhir dalam rangkaian</b><small>Penanda tahap terakhir otomatis berpindah saat pekerjaan berikutnya dibuat.</small></span>
+                    </label>
+                  </div>
+                </>
+              )}
               {stageInfo[active].move && (
                 <>
                   {active === "Pengiriman Vendor" ? (
@@ -3424,9 +5025,7 @@ export default function Home() {
                       <select
                         required
                         value={form.destination}
-                        onChange={(e) =>
-                          setForm({ ...form, destination: e.target.value })
-                        }
+                        onChange={(e) => setForm({ ...form, destination: e.target.value })}
                       >
                         <option value="">Pilih vendor</option>
                         {data.vendors
@@ -3437,6 +5036,33 @@ export default function Home() {
                             </option>
                           ))}
                       </select>
+                    </label>
+                  ) : active === "Sablon/Bordir" ? (
+                    <label>
+                      Pelaksana sablon/bordir
+                      <select
+                        required
+                        disabled={decorationFinancialLocked}
+                        value={form.destination}
+                        onChange={(e) => {
+                          const destination = e.target.value;
+                          const vendor = data.vendors.find((item) => item.name === destination);
+                          const recommendedRate = form.decorationType === "screenprint" ? vendor?.screenprintRate : vendor?.embroideryRate;
+                          setForm({ ...form, destination, decorationRate: recommendedRate ?? form.decorationRate });
+                        }}
+                      >
+                        <option value="">Pilih pelaksana</option>
+                        {data.vendors
+                          .filter((vendor) => vendor.active && (vendor.capabilities ?? ["sewing"]).includes(form.decorationType))
+                          .map((vendor) => (
+                            <option key={vendor.code} value={vendor.name}>
+                              {vendor.code} — {vendor.name}
+                            </option>
+                          ))}
+                      </select>
+                      <small>
+                        Vendor disaring berdasarkan kemampuan Sablon atau Bordir di Master Vendor.
+                      </small>
                     </label>
                   ) : active === "Penerimaan Gudang" ? (
                     <label>
@@ -3520,19 +5146,75 @@ export default function Home() {
                   </select>
                 </label>
               )}
+              {active === "Cutting" && (
+                <>
+                  <label>
+                    Pelaksana Cutting
+                    <select
+                      required
+                      value={form.officer}
+                      onChange={(e) =>
+                        setForm({ ...form, officer: e.target.value })
+                      }
+                    >
+                      <option value="">Pilih pelaksana</option>
+                      {data.pics
+                        .filter((x) => x.active)
+                        .map((x) => (
+                          <option key={x.code} value={x.name}>
+                            {x.code} — {x.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label>
+                    Tarif cutting per unit
+                    <input
+                      required
+                      type="text"
+                      inputMode="numeric"
+                      value={rupiahInput(form.cuttingRate)}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          cuttingRate: parseRupiahInput(e.target.value),
+                        })
+                      }
+                      placeholder="Contoh: 3000"
+                    />
+                  </label>
+                </>
+              )}
+              {active === "Sablon/Bordir" && (
+                <>
+                  <label>
+                    Tarif per unit
+                    <input disabled={decorationFinancialLocked} type="text" inputMode="numeric" value={rupiahInput(form.decorationRate)} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setForm({ ...form, decorationRate: parseRupiahInput(event.target.value) })} />
+                  </label>
+                  <label>
+                    Jumlah sudah selesai
+                    <input type="number" min={0} max={sum(matrix)} value={form.decorationCompleted} onChange={(event) => setForm({ ...form, decorationCompleted: Math.max(0, Number(event.target.value) || 0) })} />
+                  </label>
+                  <label>
+                    Pembayaran awal
+                    <input disabled={decorationFinancialLocked} type="text" inputMode="numeric" value={rupiahInput(form.paidAmount)} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setForm({ ...form, paidAmount: parseRupiahInput(event.target.value) })} />
+                  </label>
+                </>
+              )}
               {active === "Pengiriman Vendor" && (
                 <label>
                   Tarif jahit per unit
                   <input
                     required
-                    min="1"
-                    type="number"
+                    type="text"
                     inputMode="numeric"
-                    value={form.sewingRate}
+                    value={rupiahInput(form.sewingRate)}
+                    onFocus={(e) => e.currentTarget.select()}
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        sewingRate: Math.max(0, Number(e.target.value) || 0),
+                        sewingRate: parseRupiahInput(e.target.value),
                       })
                     }
                     placeholder="Contoh: 45000"
@@ -3541,20 +5223,6 @@ export default function Home() {
                 </label>
               )}
             </div>
-            {active === "Cutting" && form.sourceId && (
-              <button
-                type="button"
-                className="quick-fill"
-                onClick={() => {
-                  const po = (data.records["Order Produksi"] ?? []).find(
-                    (x) => x.id === form.sourceId,
-                  );
-                  if (po) setMatrix(remainingAtPO(po));
-                }}
-              >
-                ✂ Potong seluruh sisa PO
-              </button>
-            )}
             {active === "Pengiriman Vendor" && (
               <div className="shipment-bundle-picker">
                 <header>
@@ -3589,7 +5257,7 @@ export default function Home() {
                           <small>
                             {bundle.id}
                             <br />
-                            PO {bundle.poId || "—"} · Cutting C
+                            Batch {bundle.poId || "—"} · Cutting C
                             {String(bundle.batchNo ?? 1).padStart(2, "0")}
                           </small>
                         </span>
@@ -3646,6 +5314,10 @@ export default function Home() {
                 const available = sum(remainingAtVendor(shipment));
                 return (
                   <div className="receipt-summary">
+                    <div>
+                      <small>SURAT JALAN PENGIRIMAN</small>
+                      <b>{shipment.deliveryNoteId || "Belum tercatat"}</b>
+                    </div>
                     <div>
                       <small>VENDOR</small>
                       <b>{shipment.destination}</b>
@@ -3707,26 +5379,22 @@ export default function Home() {
                     </div>
                     <strong>{rupiah(bill)}</strong>
                   </header>
-                  <div>
+                  <div className="payment-totals">
                     <p>
                       <span>Tarif jahit</span>
                       <b>{rupiah(rate)} / unit</b>
                     </p>
                     <label>
-                      Total sudah dibayar
+                      Pembayaran pertama (opsional)
                       <input
-                        min="0"
-                        max={bill}
-                        type="number"
+                        type="text"
                         inputMode="numeric"
-                        value={form.paidAmount}
+                        value={rupiahInput(form.paidAmount)}
+                        onFocus={(e) => e.currentTarget.select()}
                         onChange={(e) =>
                           setForm({
                             ...form,
-                            paidAmount: Math.max(
-                              0,
-                              Number(e.target.value) || 0,
-                            ),
+                            paidAmount: parseRupiahInput(e.target.value),
                           })
                         }
                       />
@@ -3743,6 +5411,39 @@ export default function Home() {
                         }
                       />
                     </label>
+                    {form.paidAmount > 0 && (
+                      <>
+                        <label>
+                          PIC finance
+                          <select
+                            required
+                            value={form.paymentPIC}
+                            onChange={(e) =>
+                              setForm({ ...form, paymentPIC: e.target.value })
+                            }
+                          >
+                            <option value="">Pilih PIC</option>
+                            {data.pics
+                              .filter((pic) => pic.active)
+                              .map((pic) => (
+                                <option key={pic.code} value={pic.name}>
+                                  {pic.name}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                        <label>
+                          Catatan pembayaran
+                          <input
+                            value={form.paymentNote}
+                            placeholder="Contoh: DP pertama"
+                            onChange={(e) =>
+                              setForm({ ...form, paymentNote: e.target.value })
+                            }
+                          />
+                        </label>
+                      </>
+                    )}
                   </div>
                   <footer>
                     Sisa pembayaran <b>{rupiah(Math.max(0, bill - form.paidAmount))}</b>
@@ -3846,14 +5547,20 @@ export default function Home() {
               <button type="button" onClick={() => setModal(null)}>
                 Batal
               </button>
-              <button className="primary" disabled={sum(matrix) <= 0}>
-                {[
-                  "Pengiriman Vendor",
-                  "Penerimaan Gudang",
-                  "Pengiriman QC",
-                ].includes(active)
-                  ? "Simpan & buat surat jalan"
-                  : "Simpan proses"}
+              <button
+                className="primary"
+                disabled={saving || sum(matrix) <= 0}
+                aria-busy={saving}
+              >
+                {saving
+                  ? "Menyimpan..."
+                  : [
+                        "Pengiriman Vendor",
+                        "Penerimaan Gudang",
+                        "Pengiriman QC",
+                      ].includes(active)
+                    ? "Simpan & buat surat jalan"
+                    : editingDecorationRecord ? "Simpan perubahan" : "Simpan proses"}
               </button>
             </div>
           </form>
@@ -3906,6 +5613,18 @@ export default function Home() {
                     setPicForm({ ...picForm, phone: e.target.value })
                   }
                 />
+              </label>
+              <label>
+                Bank pembayaran
+                <input placeholder="Contoh: BCA" value={picForm.bankName} onChange={(e) => setPicForm({ ...picForm, bankName: e.target.value })} />
+              </label>
+              <label>
+                Nomor rekening
+                <input inputMode="numeric" placeholder="Nomor rekening" value={picForm.accountNumber} onChange={(e) => setPicForm({ ...picForm, accountNumber: e.target.value.replace(/\D/g, "") })} />
+              </label>
+              <label className="full">
+                Nama pemilik rekening
+                <input placeholder="Nama sesuai rekening" value={picForm.accountHolder} onChange={(e) => setPicForm({ ...picForm, accountHolder: e.target.value })} />
               </label>
             </div>
             <div className="form-actions">
@@ -3985,6 +5704,34 @@ export default function Home() {
                   }
                 />
               </label>
+              <label>
+                Tarif QC per unit
+                <input
+                  required
+                  type="text"
+                  inputMode="numeric"
+                  value={rupiahInput(qcLocationForm.rate)}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) =>
+                    setQcLocationForm({
+                      ...qcLocationForm,
+                      rate: parseRupiahInput(e.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Bank pembayaran
+                <input placeholder="Contoh: BCA" value={qcLocationForm.bankName} onChange={(e) => setQcLocationForm({ ...qcLocationForm, bankName: e.target.value })} />
+              </label>
+              <label>
+                Nomor rekening
+                <input inputMode="numeric" placeholder="Nomor rekening penerima QC" value={qcLocationForm.accountNumber} onChange={(e) => setQcLocationForm({ ...qcLocationForm, accountNumber: e.target.value.replace(/\D/g, "") })} />
+              </label>
+              <label className="full">
+                Nama pemilik rekening
+                <input placeholder="Nama sesuai rekening" value={qcLocationForm.accountHolder} onChange={(e) => setQcLocationForm({ ...qcLocationForm, accountHolder: e.target.value })} />
+              </label>
             </div>
             <div className="form-actions">
               <button type="button" onClick={() => setModal(null)}>
@@ -3999,9 +5746,15 @@ export default function Home() {
         const shipment = (data.records["Pengiriman Vendor"] ?? []).find(
             (x) => x.id === paymentReceipt.sourceId,
           ),
-          rate = paymentReceipt.sewingRate ?? shipment?.sewingRate ?? 0,
+          rate =
+            paymentKind === "cutting"
+              ? paymentReceipt.cuttingRate ?? 0
+              : paymentReceipt.sewingRate ?? shipment?.sewingRate ?? 0,
           bill = paymentReceipt.total * rate,
-          status = paymentStatus(bill, paymentAmount);
+          previouslyPaid = paidForReceipt(paymentReceipt),
+          remainingBefore = Math.max(0, bill - previouslyPaid),
+          paidAfter = previouslyPaid + paymentAmount,
+          status = paymentStatus(bill, paidAfter);
         return (
           <div className="overlay">
             <form
@@ -4015,28 +5768,37 @@ export default function Home() {
               >
                 ×
               </button>
-              <p className="overline">PEMBAYARAN VENDOR</p>
-              <h2>Perbarui Pembayaran Setoran</h2>
+              <p className="overline">
+                {paymentKind === "cutting" ? "PEMBAYARAN CUTTING" : "PEMBAYARAN VENDOR"}
+              </p>
+              <h2>
+                Catat Pembayaran {paymentKind === "cutting" ? "Cutting" : "Vendor"}
+              </h2>
               <div className="payment-modal-summary">
                 <p><span>Penerimaan</span><b>{paymentReceipt.id}</b></p>
-                <p><span>Vendor</span><b>{shipment?.destination || "—"}</b></p>
+                <p>
+                  <span>{paymentKind === "cutting" ? "Pelaksana" : "Vendor"}</span>
+                  <b>{paymentKind === "cutting" ? paymentReceipt.officer || "—" : shipment?.destination || "—"}</b>
+                </p>
                 <p><span>Model</span><b>{paymentReceipt.modelName}</b></p>
                 <p><span>Setoran</span><b>{paymentReceipt.total} unit</b></p>
                 <p><span>Tarif</span><b>{rupiah(rate)} / unit</b></p>
                 <p><span>Total tagihan</span><b>{rupiah(bill)}</b></p>
+                <p><span>Sudah dibayar</span><b>{rupiah(previouslyPaid)}</b></p>
+                <p><span>Sisa sebelum bayar</span><b>{rupiah(remainingBefore)}</b></p>
               </div>
               <div className="field-grid">
                 <label>
-                  Total sudah dibayar
+                  Nominal pembayaran kali ini
                   <input
                     autoFocus
-                    min="0"
-                    max={bill}
-                    type="number"
+                    required
+                    type="text"
                     inputMode="numeric"
-                    value={paymentAmount}
+                    value={rupiahInput(paymentAmount)}
+                    onFocus={(e) => e.currentTarget.select()}
                     onChange={(e) =>
-                      setPaymentAmount(Math.max(0, Number(e.target.value) || 0))
+                      setPaymentAmount(parseRupiahInput(e.target.value))
                     }
                   />
                 </label>
@@ -4050,10 +5812,35 @@ export default function Home() {
                     onChange={(e) => setPaymentDate(e.target.value)}
                   />
                 </label>
+                <label>
+                  PIC finance
+                  <select
+                    required
+                    value={paymentPIC}
+                    onChange={(e) => setPaymentPIC(e.target.value)}
+                  >
+                    <option value="">Pilih PIC</option>
+                    {data.pics
+                      .filter((pic) => pic.active)
+                      .map((pic) => (
+                        <option key={pic.code} value={pic.name}>
+                          {pic.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label className="full">
+                  Catatan pembayaran
+                  <input
+                    value={paymentNote}
+                    placeholder="Contoh: DP kedua / pelunasan"
+                    onChange={(e) => setPaymentNote(e.target.value)}
+                  />
+                </label>
               </div>
               <div className="payment-modal-status">
-                <p><span>Status otomatis</span><b>{status}</b></p>
-                <p><span>Sisa pembayaran</span><strong>{rupiah(Math.max(0, bill - paymentAmount))}</strong></p>
+                <p><span>Status setelah pembayaran</span><b>{status}</b></p>
+                <p><span>Sisa setelah pembayaran</span><strong>{rupiah(Math.max(0, bill - paidAfter))}</strong></p>
               </div>
               <div className="form-actions">
                 <button type="button" onClick={() => setPaymentReceipt(null)}>
@@ -4065,11 +5852,243 @@ export default function Home() {
           </div>
         );
       })()}
+      {cuttingRateRecord && (
+        <div className="overlay">
+          <form
+            className="form-modal payment-modal"
+            onSubmit={updateCuttingRate}
+          >
+            <button
+              className="close"
+              type="button"
+              onClick={() => setCuttingRateRecord(null)}
+            >
+              ×
+            </button>
+            <p className="overline">TARIF CUTTING</p>
+            <h2>Atur Tarif Cutting</h2>
+            <div className="payment-modal-summary">
+              <p><span>Kode Cutting</span><b>{cuttingRateRecord.id}</b></p>
+              <p><span>Referensi produksi</span><b>{cuttingRateRecord.poId || cuttingRateRecord.id}</b></p>
+              <p><span>Model</span><b>{cuttingRateRecord.modelName}</b></p>
+              <p><span>Jumlah</span><b>{cuttingRateRecord.total} unit</b></p>
+            </div>
+            <div className="field-grid">
+              <label className="full">
+                Tarif cutting per unit
+                <input
+                  autoFocus
+                  required
+                  type="text"
+                  inputMode="numeric"
+                  value={rupiahInput(cuttingRateInput)}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) =>
+                    setCuttingRateInput(parseRupiahInput(e.target.value))
+                  }
+                />
+              </label>
+            </div>
+            <div className="payment-modal-status">
+              <p><span>Total tagihan</span><strong>{rupiah(cuttingRateRecord.total * cuttingRateInput)}</strong></p>
+            </div>
+            <div className="form-actions">
+              <button type="button" onClick={() => setCuttingRateRecord(null)}>
+                Batal
+              </button>
+              <button className="primary">Simpan tarif</button>
+            </div>
+          </form>
+        </div>
+      )}
+      {vendorRateRecord && (
+        <div className="overlay">
+          <form className="form-modal payment-modal" onSubmit={updateVendorRate}>
+            <button className="close" type="button" onClick={() => setVendorRateRecord(null)}>
+              ×
+            </button>
+            <p className="overline">TARIF VENDOR JAHIT</p>
+            <h2>Lengkapi Tarif Jahit</h2>
+            <div className="payment-modal-summary">
+              <p><span>Penerimaan</span><b>{vendorRateRecord.id}</b></p>
+              <p><span>Referensi produksi</span><b>{vendorRateRecord.poId || vendorRateRecord.sourceId}</b></p>
+              <p><span>Model</span><b>{vendorRateRecord.modelName}</b></p>
+              <p><span>Jumlah setoran</span><b>{vendorRateRecord.total} unit</b></p>
+            </div>
+            <div className="field-grid">
+              <label className="full">
+                Tarif jahit per unit
+                <input
+                  autoFocus
+                  required
+                  type="text"
+                  inputMode="numeric"
+                  value={rupiahInput(vendorRateInput)}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => setVendorRateInput(parseRupiahInput(e.target.value))}
+                />
+              </label>
+            </div>
+            <div className="payment-modal-status">
+              <p><span>Total tagihan setoran</span><strong>{rupiah(vendorRateRecord.total * vendorRateInput)}</strong></p>
+            </div>
+            <div className="form-actions">
+              <button type="button" onClick={() => setVendorRateRecord(null)}>Batal</button>
+              <button className="primary">Simpan tarif</button>
+            </div>
+          </form>
+        </div>
+      )}
+      {qcRateRecord && (
+        <div className="overlay">
+          <form className="form-modal payment-modal" onSubmit={updateQCRate}>
+            <button className="close" type="button" onClick={() => setQCRateRecord(null)}>×</button>
+            <p className="overline">TARIF QUALITY CONTROL</p>
+            <h2>Lengkapi Tarif QC</h2>
+            <div className="payment-modal-summary">
+              <p><span>Pemeriksaan</span><b>{qcRateRecord.id}</b></p>
+              <p><span>Referensi produksi</span><b>{qcRateRecord.poId || qcRateRecord.sourceId}</b></p>
+              <p><span>Model</span><b>{qcRateRecord.modelName}</b></p>
+              <p><span>Jumlah diperiksa</span><b>{qcRateRecord.total} unit</b></p>
+            </div>
+            <div className="field-grid">
+              <label className="full">
+                Tarif QC per unit
+                <input
+                  autoFocus
+                  required
+                  type="text"
+                  inputMode="numeric"
+                  value={rupiahInput(qcRateInput)}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onChange={(e) => setQCRateInput(parseRupiahInput(e.target.value))}
+                />
+              </label>
+            </div>
+            <div className="payment-modal-status">
+              <p><span>Total tagihan pemeriksaan</span><strong>{rupiah(qcRateRecord.total * qcRateInput)}</strong></p>
+            </div>
+            <div className="form-actions">
+              <button type="button" onClick={() => setQCRateRecord(null)}>Batal</button>
+              <button className="primary">Simpan tarif</button>
+            </div>
+          </form>
+        </div>
+      )}
+      {weeklyDraft && (() => {
+        const lines = weeklyDraft.rows.map((row) => {
+            const rate = weeklyDraft.kind === "cutting"
+              ? row.cuttingRate ?? 0
+              : weeklyDraft.kind === "qc"
+                ? row.qcRate ?? 0
+                : weeklyDraft.kind === "decoration"
+                  ? row.decorationRate ?? 0
+                  : row.sewingRate ?? 0;
+            return { row, rate, amount: row.total * rate };
+          }),
+          totalUnits = lines.reduce((total, line) => total + line.row.total, 0),
+          totalAmount = lines.reduce((total, line) => total + line.amount, 0),
+          paidBefore = weeklyDraft.kind === "vendor" || weeklyDraft.kind === "decoration"
+            ? weeklyDraft.rows.reduce(
+                (total, receipt) => total + paidForReceipt(receipt),
+                0,
+              )
+            : weeklyPaidAmount(
+                data.weeklyPayments,
+                weeklyDraft.kind,
+                weeklyDraft.payee,
+                weeklyDraft.periodStart,
+                weeklyDraft.periodEnd,
+              ),
+          remainingBefore = Math.max(0, totalAmount - paidBefore),
+          remainingAfter = Math.max(0, remainingBefore - weeklyAmount),
+          statusBefore = paidBefore <= 0 ? "Belum dibayar" : remainingBefore > 0 ? "DP sebagian" : "Lunas",
+          paidAfter = paidBefore + weeklyAmount,
+          statusAfter = paidAfter <= 0 ? "Belum dibayar" : remainingAfter > 0 ? "DP sebagian" : "Lunas";
+        return (
+          <div className="overlay">
+            <form className="form-modal weekly-payment-modal" onSubmit={saveWeeklyPayment}>
+              <button className="close" type="button" onClick={() => setWeeklyDraft(null)}>×</button>
+              <p className="overline">REKAP PEMBAYARAN MINGGUAN</p>
+              <h2>{weeklyDraft.kind === "cutting" ? "Pembayaran Cutting" : weeklyDraft.kind === "qc" ? "Pembayaran QC" : weeklyDraft.kind === "decoration" ? "Pembayaran Vendor Sablon/Bordir" : "Pembayaran Vendor Jahit"}</h2>
+              <div className="payment-modal-summary">
+                <p><span>Penerima</span><b>{weeklyDraft.payee}</b></p>
+                <p><span>Periode</span><b>{weeklyDraft.periodStart} – {weeklyDraft.periodEnd}</b></p>
+                <p><span>Total pekerjaan</span><b>{lines.length} transaksi</b></p>
+                <p><span>Total unit</span><b>{totalUnits} unit</b></p>
+              </div>
+              <div className="weekly-payment-lines modal-lines">
+                {lines.map(({ row, rate, amount }) => (
+                  <p key={row.id}><span><b>{row.id}</b><small>{row.modelName} · {row.total} unit × {rupiah(rate)}</small></span><strong>{rupiah(amount)}</strong></p>
+                ))}
+              </div>
+              <div className="payment-modal-status">
+                <p><span>Total tagihan</span><b>{rupiah(totalAmount)}</b></p>
+                <p><span>Sudah dibayar</span><b>{rupiah(paidBefore)}</b></p>
+                <p><span>Sisa sebelum bayar</span><strong>{rupiah(remainingBefore)}</strong></p>
+                <p><span>Status saat ini</span><b>{statusBefore}</b></p>
+                <p><span>Total setelah bayar</span><b>{rupiah(paidAfter)}</b></p>
+                <p><span>Status setelah bayar</span><b>{statusAfter}</b></p>
+              </div>
+              <div className="field-grid">
+                <label className="full">
+                  Nominal pembayaran kali ini
+                  <input required type="text" inputMode="numeric" value={rupiahInput(weeklyAmount)} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setWeeklyAmount(parseRupiahInput(e.target.value))} />
+                  <small>Sisa setelah pembayaran: {rupiah(remainingAfter)}</small>
+                </label>
+                <label>
+                  Tanggal pembayaran
+                  <input required type="date" value={weeklyPaymentDate} onChange={(e) => setWeeklyPaymentDate(e.target.value)} />
+                </label>
+                <label>
+                  Finance penerima pengajuan
+                  <select required value={weeklyPIC} onChange={(e) => setWeeklyPIC(e.target.value)}>
+                    <option value="">Pilih Finance</option>
+                    {data.pics.filter((pic) => pic.active).map((pic) => <option key={pic.code} value={pic.name}>{pic.name}</option>)}
+                  </select>
+                </label>
+                <label>
+                  PIC pengaju
+                  <select required value={weeklyRequester} onChange={(e) => setWeeklyRequester(e.target.value)}>
+                    <option value="">Pilih pengaju</option>
+                    {data.pics.filter((pic) => pic.active).map((pic) => <option key={pic.code} value={pic.name}>{pic.name}</option>)}
+                  </select>
+                </label>
+                <label className="full">
+                  Catatan
+                  <input value={weeklyNote} onChange={(e) => setWeeklyNote(e.target.value)} placeholder="Contoh: Pembayaran minggu ke-2" />
+                </label>
+              </div>
+              <div className="form-actions">
+                <button type="button" onClick={() => setWeeklyDraft(null)}>Batal</button>
+                <button className="primary">Simpan pembayaran</button>
+              </div>
+            </form>
+          </div>
+        );
+      })()}
       {print && <PrintNote note={print} close={() => setPrint(null)} />}
       {bundlePrint && (
         <BundleLabel
           bundle={bundlePrint}
           close={() => setBundlePrint(null)}
+        />
+      )}
+      {paymentPrint && (
+        <PaymentReceiptPrint
+          receipt={paymentPrint.receipt}
+          payment={paymentPrint.payment}
+          kind={paymentPrint.kind}
+          shipment={(data.records["Pengiriman Vendor"] ?? []).find(
+            (item) => item.id === paymentPrint.receipt.sourceId,
+          )}
+          close={() => setPaymentPrint(null)}
+        />
+      )}
+      {weeklyPrint && (
+        <WeeklyPaymentPrint
+          payment={weeklyPrint}
+          close={() => setWeeklyPrint(null)}
         />
       )}
       {toast && <div className="toast">✓ {toast}</div>}
@@ -4434,6 +6453,7 @@ function reconcileData(data: AppData) {
     }
   for (const [parentStage, childStage] of links) {
     for (const child of records[childStage] ?? []) {
+      if (childStage === "Cutting" && !child.sourceId) continue;
       const parent = (records[parentStage] ?? []).find(
         (x) => x.id === child.sourceId,
       );
@@ -4501,8 +6521,8 @@ function reconcileData(data: AppData) {
     }
   }
   for (const stage of [
+    "Sablon/Bordir",
     "Pengiriman Vendor",
-    "Penerimaan Gudang",
     "Pengiriman QC",
     "Rework",
     "Penerimaan Rework",
@@ -4517,6 +6537,19 @@ function reconcileData(data: AppData) {
         )
       )
         issues.push(`${row.id}: surat jalan belum ditemukan`);
+  for (const receipt of records["Penerimaan Gudang"] ?? []) {
+    const shipment = (records["Pengiriman Vendor"] ?? []).find(
+      (row) => row.id === receipt.sourceId,
+    );
+    if (!shipment)
+      issues.push(`${receipt.id}: pengiriman vendor sumber tidak ditemukan`);
+    else if (
+      !receipt.deliveryNoteId ||
+      receipt.deliveryNoteId !== shipment.deliveryNoteId ||
+      !data.notes.some((note) => note.id === receipt.deliveryNoteId)
+    )
+      issues.push(`${receipt.id}: referensi surat jalan pengiriman tidak valid`);
+  }
   return [...new Set(issues)];
 }
 function LegacyDashboard({
@@ -4840,8 +6873,9 @@ function LegacyDashboard({
 function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
   const [breakdown, setBreakdown] = useState<string | null>(null),
     [stockDetail, setStockDetail] = useState<string | null>(null),
-    [period, setPeriod] = useState<"today" | "week" | "month" | "custom">(
-      "month",
+    [summaryDetail, setSummaryDetail] = useState<string | null>(null),
+    [period, setPeriod] = useState<"today" | "week" | "month" | "custom" | "max">(
+      "max",
     ),
     today = new Date().toISOString().slice(0, 10),
     [customStart, setCustomStart] = useState(`${today.slice(0, 8)}01`),
@@ -4904,7 +6938,6 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
     return { ...row, variants, total: sum(variants) };
   });
   const positions: Record<string, RecordRow[]> = {
-    "Order Produksi": withBalance(records["Order Produksi"] ?? [], "Cutting"),
     Cutting: withBalance(records.Cutting ?? [], "Bundle"),
     Bundle: withBalance(records.Bundle ?? [], "Pengiriman Vendor"),
     "Pengiriman Vendor": withBalance(
@@ -4936,7 +6969,6 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
       (positions[key] ?? []).reduce((n, x) => n + x.total, 0),
     stock = units("Stok Barang Jadi");
   const cards = [
-    { key: "Order Produksi", label: "PO Aktif", icon: "◇" },
     { key: "Cutting", label: "Cutting", icon: "✂" },
     { key: "Bundle", label: "Bundle", icon: "▱" },
     { key: "Pengiriman Vendor", label: "Vendor Jahit", icon: "↗" },
@@ -4961,47 +6993,18 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
           ? weekStart
           : period === "month"
             ? `${today.slice(0, 8)}01`
-            : customStart,
+            : period === "custom"
+              ? customStart
+              : "0000-01-01",
     rangeEnd = period === "custom" ? customEnd : today,
     inRange = (row: RecordRow) =>
-      row.date >= rangeStart && row.date <= rangeEnd,
-    periodRows = (stage: string) => (records[stage] ?? []).filter(inRange),
-    qcActivity = [...periodRows("Quality Control"), ...periodRows("QC Ulang")],
-    activity = [
-      {
-        label: "Dikirim Vendor",
-        value: periodRows("Pengiriman Vendor").reduce((n, x) => n + x.total, 0),
-      },
-      {
-        label: "Setoran Gudang",
-        value: periodRows("Penerimaan Gudang").reduce((n, x) => n + x.total, 0),
-      },
-      {
-        label: "Diperiksa QC",
-        value: qcActivity.reduce((n, x) => n + x.total, 0),
-      },
-      {
-        label: "Lolos QC",
-        value: qcActivity.reduce((n, x) => n + (x.qcPassed ?? 0), 0),
-      },
-      {
-        label: "Repair",
-        value: qcActivity.reduce((n, x) => n + (x.qcRepair ?? 0), 0),
-      },
-      {
-        label: "Reject",
-        value: qcActivity.reduce((n, x) => n + (x.qcReject ?? 0), 0),
-      },
-      {
-        label: "Masuk Stok",
-        value: periodRows("Stok Barang Jadi").reduce((n, x) => n + x.total, 0),
-      },
-    ];
+      row.date >= rangeStart && row.date <= rangeEnd;
   const productionRows = [
       ...positions.Cutting,
       ...positions.Bundle,
       ...positions["Pengiriman Vendor"],
     ],
+    cuttingRows = records.Cutting ?? [],
     awaitingQCRows = [
       ...positions["Penerimaan Gudang"],
       ...positions["Pengiriman QC"],
@@ -5017,7 +7020,56 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
     inProduction = productionRows.reduce((n, x) => n + x.total, 0),
     repairPotential = repairRows.reduce((n, x) => n + x.total, 0),
     futurePotential = readyStock + awaitingQC + inProduction + repairPotential,
-    projectedMaximum = stock + futurePotential,
+    qcProcessRows = [...awaitingQCRows, ...pendingStockRows],
+    rejectRows = positions["Karantina Reject"],
+    summaryStock = stockRows.filter(inRange).reduce((n, x) => n + x.total, 0),
+    summaryCutting = cuttingRows.filter(inRange).reduce((n, x) => n + x.total, 0),
+    summaryProduction = productionRows.filter(inRange).reduce((n, x) => n + x.total, 0),
+    summaryQC = qcProcessRows.filter(inRange).reduce((n, x) => n + x.total, 0),
+    summaryRepair = repairRows.filter(inRange).reduce((n, x) => n + x.total, 0),
+    summaryReject = rejectRows.filter(inRange).reduce((n, x) => n + x.total, 0),
+    summarySources: Record<string, { label: string; rows: RecordRow[] }> = {
+      cutting: { label: "Total Cutting", rows: cuttingRows },
+      stock: { label: "Stok Jadi", rows: stockRows },
+      production: { label: "Sedang Proses", rows: productionRows },
+      qc: { label: "Sedang QC", rows: qcProcessRows },
+      repair: { label: "Repair", rows: repairRows },
+      reject: { label: "Reject", rows: rejectRows },
+    },
+    selectedSummary = summaryDetail ? summarySources[summaryDetail] : null,
+    selectedSummaryRows = (selectedSummary?.rows ?? []).filter(inRange),
+    selectedSummarySizes = [
+      ...new Set(
+        selectedSummaryRows.flatMap((row) => row.variants.map((variant) => variant.size)),
+      ),
+    ].sort(compareSizes),
+    selectedSummaryModels = [
+      ...new Set(selectedSummaryRows.map((row) => row.modelCode)),
+    ].map((modelCode) => {
+      const modelRows = selectedSummaryRows.filter((row) => row.modelCode === modelCode),
+        colors = [...new Set(modelRows.flatMap((row) => row.variants.map((variant) => variant.color)))].map(
+          (color) => {
+            const quantities = Object.fromEntries(
+                selectedSummarySizes.map((size) => [
+                  size,
+                  modelRows
+                    .flatMap((row) => row.variants)
+                    .filter((variant) => variant.color === color && variant.size === size)
+                    .reduce((total, variant) => total + variant.qty, 0),
+                ]),
+              ),
+              total = Object.values(quantities).reduce((sum, qty) => sum + qty, 0);
+            return { color, quantities, total };
+          },
+        );
+      return {
+        modelCode,
+        modelName: modelRows[0]?.modelName ?? modelCode,
+        colors,
+        total: colors.reduce((sum, color) => sum + color.total, 0),
+      };
+    }),
+    selectedSummaryTotal = selectedSummaryModels.reduce((sum, model) => sum + model.total, 0),
     allTrackedRows = [
       ...stockRows,
       ...pendingStockRows,
@@ -5082,7 +7134,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
           awaiting,
           production,
           repair,
-          projected: actual + ready + awaiting + production + repair,
+          projected: ready + awaiting + production + repair,
         };
       }),
       colorGroups = [...new Set(variants.map((variant) => variant.color))].map(
@@ -5127,7 +7179,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
       awaiting,
       production,
       repair,
-      projected: actual + ready + awaiting + production + repair,
+      projected: ready + awaiting + production + repair,
       variants,
       colorGroups,
       vendors: [...vendorMap.entries()],
@@ -5137,42 +7189,49 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
   return (
     <div className="owner-simple">
       <section className="stock-outlook">
-        <header>
-          <div>
-            <h2>Stok jadi & potensi produksi</h2>
-            <span>
-              Saldo aktual dan estimasi berdasarkan posisi terakhir setiap unit
-            </span>
+        <header className="dashboard-summary-filter">
+          <div className="period-switch" aria-label="Pilih rentang waktu dashboard">
+            {[
+              ["today", "Hari ini"],
+              ["week", "Minggu ini"],
+              ["month", "Bulan ini"],
+              ["custom", "Custom"],
+              ["max", "Maksimal"],
+            ].map(([value, label]) => (
+              <button type="button" className={period === value ? "active" : ""} key={value} onClick={() => setPeriod(value as typeof period)}>{label}</button>
+            ))}
           </div>
-          <button type="button" onClick={() => go("Stok Barang Jadi")}>
-            Buka data stok →
-          </button>
         </header>
+        {period === "custom" && <div className="period-dates dashboard-summary-dates"><label>Dari<input type="date" value={customStart} max={customEnd} onChange={(e) => setCustomStart(e.target.value)} /></label><label>Sampai<input type="date" value={customEnd} min={customStart} onChange={(e) => setCustomEnd(e.target.value)} /></label></div>}
         <div className="stock-outlook-kpis">
-          <article className="actual">
-            <span>STOK JADI AKTUAL</span>
-            <b>{stock}</b>
-            <small>unit sudah dibukukan</small>
+          <article className={`cutting cutting-summary-card ${summaryDetail === "cutting" ? "selected" : ""}`} role="button" tabIndex={0} onClick={() => setSummaryDetail("cutting")} onKeyDown={(event) => event.key === "Enter" && setSummaryDetail("cutting")}>
+            <span>TOTAL CUTTING</span>
+            <b>{summaryCutting}</b>
           </article>
-          <article className="ready">
-            <span>SIAP MASUK STOK</span>
-            <b>{readyStock}</b>
-            <small>lolos QC · belum stok</small>
+          <article className={`actual ${summaryDetail === "stock" ? "selected" : ""}`} role="button" tabIndex={0} onClick={() => setSummaryDetail("stock")} onKeyDown={(event) => event.key === "Enter" && setSummaryDetail("stock")}>
+            <span>STOK JADI</span>
+            <b>{summaryStock}</b>
+            <small>unit masuk stok pada periode</small>
           </article>
-          <article className="waiting">
-            <span>BELUM QC</span>
-            <b>{awaitingQC}</b>
-            <small>gudang dan antrean QC</small>
+          <article className={`production ${summaryDetail === "production" ? "selected" : ""}`} role="button" tabIndex={0} onClick={() => setSummaryDetail("production")} onKeyDown={(event) => event.key === "Enter" && setSummaryDetail("production")}>
+            <span>SEDANG PROSES</span>
+            <b>{summaryProduction}</b>
+            <small>Cutting sampai vendor jahit</small>
           </article>
-          <article className="repair">
-            <span>SEDANG REPAIR</span>
-            <b>{repairPotential}</b>
-            <small>masih berpotensi lolos</small>
+          <article className={`waiting ${summaryDetail === "qc" ? "selected" : ""}`} role="button" tabIndex={0} onClick={() => setSummaryDetail("qc")} onKeyDown={(event) => event.key === "Enter" && setSummaryDetail("qc")}>
+            <span>SEDANG QC</span>
+            <b>{summaryQC}</b>
+            <small>antrean dan hasil QC belum masuk stok</small>
           </article>
-          <article className="forecast">
-            <span>POTENSI STOK AKHIR</span>
-            <b>{projectedMaximum}</b>
-            <small>aktual + {futurePotential} potensi</small>
+          <article className={`repair ${summaryDetail === "repair" ? "selected" : ""}`} role="button" tabIndex={0} onClick={() => setSummaryDetail("repair")} onKeyDown={(event) => event.key === "Enter" && setSummaryDetail("repair")}>
+            <span>REPAIR</span>
+            <b>{summaryRepair}</b>
+            <small>unit menunggu atau sedang diperbaiki</small>
+          </article>
+          <article className={`reject ${summaryDetail === "reject" ? "selected" : ""}`} role="button" tabIndex={0} onClick={() => setSummaryDetail("reject")} onKeyDown={(event) => event.key === "Enter" && setSummaryDetail("reject")}>
+            <span>REJECT</span>
+            <b>{summaryReject}</b>
+            <small>unit gagal QC dan dikarantina</small>
           </article>
         </div>
         <div className="stock-outlook-table">
@@ -5183,7 +7242,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
             <span>BELUM QC</span>
             <span>PRODUKSI</span>
             <span>REPAIR</span>
-            <span>POTENSI AKHIR</span>
+            <span>POTENSI STOK</span>
           </div>
           {stockOutlook.length === 0 ? (
             <p className="stock-outlook-empty">
@@ -5229,7 +7288,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
                       <span>BELUM QC</span>
                       <span>PRODUKSI</span>
                       <span>REPAIR</span>
-                      <span>POTENSI AKHIR</span>
+                      <span>POTENSI STOK</span>
                     </div>
                     <div className="stock-color-groups">
                       {model.colorGroups.map((group) => (
@@ -5242,7 +7301,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
                               <i aria-hidden="true" />
                               <b>{group.color}</b>
                             </span>
-                            <strong>{group.projected} unit potensi akhir</strong>
+                            <strong>{group.projected} unit potensi stok</strong>
                           </header>
                           {group.variants.map((variant) => (
                             <div
@@ -5268,71 +7327,58 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
           )}
         </div>
         <footer>
-          Potensi stok akhir belum dikurangi kemungkinan reject. Barang reject
-          tidak masuk potensi stok akhir.
+          Potensi stok adalah unit yang belum menjadi stok jadi dan belum
+          dikurangi kemungkinan reject. Barang reject tidak masuk potensi stok.
         </footer>
       </section>
-      <section className="owner-activity">
-        <header>
-          <div>
-            <h2>Aktivitas periode</h2>
-            <span>
-              Hanya menyaring aktivitas · posisi barang tetap saldo sebenarnya
-            </span>
-          </div>
-          <div className="period-switch" aria-label="Pilih rentang waktu">
-            {[
-              ["today", "Hari ini"],
-              ["week", "Minggu ini"],
-              ["month", "Bulan ini"],
-              ["custom", "Custom"],
-            ].map(([value, label]) => (
-              <button
-                type="button"
-                className={period === value ? "active" : ""}
-                key={value}
-                onClick={() =>
-                  setPeriod(value as "today" | "week" | "month" | "custom")
-                }
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </header>
-        {period === "custom" && (
-          <div className="period-dates">
-            <label>
-              Dari
-              <input
-                type="date"
-                value={customStart}
-                max={customEnd}
-                onChange={(e) => setCustomStart(e.target.value)}
-              />
-            </label>
-            <label>
-              Sampai
-              <input
-                type="date"
-                value={customEnd}
-                min={customStart}
-                onChange={(e) => setCustomEnd(e.target.value)}
-              />
-            </label>
-          </div>
-        )}
-        <div className="activity-strip">
-          {activity.map((item) => (
-            <article key={item.label}>
-              <span>{item.label}</span>
-              <b>{item.value}</b>
-              <small>unit</small>
-            </article>
-          ))}
+      {selectedSummary && (
+        <div className="owner-drawer-backdrop summary-detail-backdrop" onClick={() => setSummaryDetail(null)}>
+          <aside className="owner-drawer summary-detail-drawer" onClick={(event) => event.stopPropagation()}>
+            <header>
+              <div>
+                <h2>Rincian {selectedSummary.label}</h2>
+                <span>{selectedSummaryTotal} unit · mengikuti periode dashboard</span>
+              </div>
+              <button type="button" aria-label="Tutup rincian" onClick={() => setSummaryDetail(null)}>×</button>
+            </header>
+            <div className="summary-detail-table-wrap">
+              {selectedSummaryModels.length === 0 ? (
+                <div className="drawer-empty">
+                  <b>Belum ada barang</b>
+                  <span>Tidak ada unit pada status dan periode yang dipilih.</span>
+                </div>
+              ) : (
+                <table className="summary-detail-table">
+                  <thead>
+                    <tr>
+                      <th>Model</th>
+                      <th>SKU</th>
+                      <th>Warna</th>
+                      {selectedSummarySizes.map((size) => <th key={size}>{size}</th>)}
+                      <th>Jumlah</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedSummaryModels.map((model) =>
+                      model.colors.map((color, colorIndex) => (
+                        <tr className={colorIndex === 0 ? "model-group-start" : ""} key={`${model.modelCode}-${color.color}`}>
+                          {colorIndex === 0 && <td className="summary-model-cell" rowSpan={model.colors.length}><b>{model.modelName}</b><small>{model.total} unit</small></td>}
+                          {colorIndex === 0 && <td className="summary-sku-cell" rowSpan={model.colors.length}>{model.modelCode}</td>}
+                          <td className="summary-color-cell" style={dashboardColorTone(color.color)}>{color.color}</td>
+                          {selectedSummarySizes.map((size) => <td key={size} className="summary-qty-cell">{color.quantities[size] || ""}</td>)}
+                          <td className="summary-total-cell">{color.total}</td>
+                        </tr>
+                      )),
+                    )}
+                  </tbody>
+                  <tfoot><tr><th colSpan={3 + selectedSummarySizes.length}>Total {selectedSummary.label}</th><th>{selectedSummaryTotal}</th></tr></tfoot>
+                </table>
+              )}
+            </div>
+          </aside>
         </div>
-      </section>
-      <OwnerVendorMonitoring data={data} />
+      )}
+      <OwnerVendorMonitoring data={data} periodStart={rangeStart} periodEnd={rangeEnd} />
       <section className="production-board-panel">
         <header>
           <div>
@@ -5496,52 +7542,27 @@ function PICMaster({
   onEdit: (item: PIC) => void;
   onDelete: (item: PIC) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const filtered = items.filter((item) =>
+    [item.code, item.name, item.role, item.phone, item.bankName]
+      .join(" ")
+      .toLowerCase()
+      .includes(query.toLowerCase()),
+  );
   return (
     <>
-      <div className="page-title">
-        <div>
-          <p className="overline">MASTER DATA</p>
-          <h1>PIC / Penanggung Jawab</h1>
-          <span>
-            Dipilih saat perpindahan barang dan dicetak pada surat jalan.
-          </span>
-        </div>
-        <button className="primary" onClick={onAdd}>
-          ＋ Tambah PIC
-        </button>
-      </div>
+      <MasterTableTitle title="Master PIC" />
       {items.length === 0 ? (
         <Empty
           title="Belum ada PIC"
           text="Tambahkan penanggung jawab agar proses pengiriman tidak perlu mengetik nama manual."
         />
       ) : (
-        <div className="model-grid">
-          {items.map((item) => (
-            <article key={item.code}>
-              <div>
-                <span>{item.code}</span>
-                <em>{item.active ? "Aktif" : "Nonaktif"}</em>
-              </div>
-              <h2>{item.name}</h2>
-              <small>JABATAN / TUGAS</small>
-              <p>
-                <b>{item.role || "PIC Produksi"}</b>
-              </p>
-              <small>KONTAK</small>
-              <p>{item.phone || "Belum diisi"}</p>
-              <footer>
-                <span>Penanggung jawab transaksi</span>
-                <div className="master-actions">
-                  <button onClick={() => onEdit(item)}>✎ Edit</button>
-                  <button className="danger" onClick={() => onDelete(item)}>
-                    ♲ Hapus
-                  </button>
-                </div>
-              </footer>
-            </article>
-          ))}
-        </div>
+        <MasterTablePanel query={query} onQuery={setQuery} placeholder="Cari kode, nama, jabatan, atau kontak..." addLabel="Tambah PIC" onAdd={onAdd} count={filtered.length} columns={["No.", "Kode", "Nama PIC", "Jabatan", "Kontak", "Rekening", "Status", "Aksi"]}>
+          <table className="master-data-table"><thead><tr><th>No.</th><th>Kode</th><th>Nama PIC</th><th>Jabatan</th><th>Kontak</th><th>Rekening</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
+            {filtered.map((item, index) => <tr key={item.code}><td data-label="No.">{index + 1}</td><td data-label="Kode"><b>{item.code}</b></td><td data-label="Nama PIC"><b>{item.name}</b></td><td data-label="Jabatan">{item.role || "PIC Produksi"}</td><td data-label="Kontak">{item.phone || "Belum diisi"}</td><td data-label="Rekening">{item.bankName && item.accountNumber ? <><b>{item.bankName} {item.accountNumber}</b><small>a.n. {item.accountHolder || item.name}</small></> : "Belum diisi"}</td><td data-label="Status"><span className={`master-status ${item.active ? "active" : "inactive"}`}>{item.active ? "Aktif" : "Nonaktif"}</span></td><td data-label="Aksi"><MasterRowActions onEdit={() => onEdit(item)} onDelete={() => onDelete(item)} /></td></tr>)}
+          </tbody></table>
+        </MasterTablePanel>
       )}
     </>
   );
@@ -5558,60 +7579,27 @@ function Master({
   onEdit: (m: Model) => void;
   onDelete: (m: Model) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const filtered = data.models.filter((m) =>
+    [m.code, m.name, ...m.colors, ...m.sizes, decorationLabel(m.decorationProcess)]
+      .join(" ")
+      .toLowerCase()
+      .includes(query.toLowerCase()),
+  );
   return (
     <>
-      <div className="page-title">
-        <div>
-          <p className="overline">MASTER DATA</p>
-          <h1>Model Jaket</h1>
-          <span>
-            Warna dan ukuran dapat ditambah, diubah, atau dihapus kapan saja.
-          </span>
-        </div>
-        <button className="primary" onClick={onAdd}>
-          ＋ Tambah jaket
-        </button>
-      </div>
+      <MasterTableTitle title="Master Jaket" />
       {data.models.length === 0 ? (
         <Empty
           title="Belum ada master jaket"
           text="Tambahkan model jaket pertama untuk memulai PO produksi."
         />
       ) : (
-        <div className="model-grid">
-          {data.models.map((m) => (
-            <article key={m.code}>
-              <div>
-                <span>{m.code}</span>
-                <em>Aktif</em>
-              </div>
-              <h2>{m.name}</h2>
-              <small>WARNA · {m.colors.length}</small>
-              <p>
-                {m.colors.map((c) => (
-                  <b key={c}>{c}</b>
-                ))}
-              </p>
-              <small>UKURAN · {m.sizes.length}</small>
-              <p>
-                {m.sizes.map((s) => (
-                  <b key={s}>{s}</b>
-                ))}
-              </p>
-              <footer>
-                <span>
-                  Kode: <strong>{m.code}</strong>
-                </span>
-                <div className="master-actions">
-                  <button onClick={() => onEdit(m)}>✎ Edit</button>
-                  <button className="danger" onClick={() => onDelete(m)}>
-                    ♲ Hapus
-                  </button>
-                </div>
-              </footer>
-            </article>
-          ))}
-        </div>
+        <MasterTablePanel query={query} onQuery={setQuery} placeholder="Cari kode, model, warna, atau ukuran..." addLabel="Tambah Jaket" onAdd={onAdd} count={filtered.length} columns={["No.", "Kode", "Nama Model", "Warna", "Ukuran", "Proses", "Status", "Aksi"]}>
+          <table className="master-data-table"><thead><tr><th>No.</th><th>Kode</th><th>Nama Model</th><th>Warna</th><th>Ukuran</th><th>Proses</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
+            {filtered.map((m, index) => <tr key={m.code}><td data-label="No.">{index + 1}</td><td data-label="Kode"><b>{m.code}</b></td><td data-label="Nama Model"><b>{m.name}</b></td><td data-label="Warna"><span className="master-chip-list">{m.colors.map((color) => <small key={color}>{color}</small>)}</span></td><td data-label="Ukuran"><span className="master-chip-list">{m.sizes.slice().sort(compareSizes).map((size) => <small key={size}>{size}</small>)}</span></td><td data-label="Proses"><span className={`decoration-badge ${(m.decorationProcess ?? "none") === "none" ? "none" : "required"}`}>{decorationLabel(m.decorationProcess)}</span></td><td data-label="Status"><span className="master-status active">Aktif</span></td><td data-label="Aksi"><MasterRowActions onEdit={() => onEdit(m)} onDelete={() => onDelete(m)} /></td></tr>)}
+          </tbody></table>
+        </MasterTablePanel>
       )}
     </>
   );
@@ -5629,76 +7617,32 @@ function VendorMaster({
   onEdit: (v: Vendor) => void;
   onDelete: (v: Vendor) => void;
 }) {
+  const [query, setQuery] = useState("");
+  const filtered = vendors.filter((v) =>
+    [v.code, v.name, v.contact, v.phone, v.address, v.bankName]
+      .join(" ")
+      .toLowerCase()
+      .includes(query.toLowerCase()),
+  );
   return (
     <>
-      <div className="page-title">
-        <div>
-          <p className="overline">MASTER DATA</p>
-          <h1>Vendor Jahit & Pengaturan QC</h1>
-          <span>
-            Metode dan tujuan QC setiap vendor diatur dari satu halaman.
-          </span>
-        </div>
-        <button className="primary" onClick={onAdd}>
-          ＋ Tambah vendor
-        </button>
-      </div>
+      <MasterTableTitle title="Master Vendor" />
       {vendors.length === 0 ? (
         <Empty
           title="Belum ada vendor"
           text="Tambahkan tujuan QC di bawah, lalu buat vendor jahit pertama."
         />
       ) : (
-        <div className="model-grid">
-          {vendors.map((v) => {
+        <MasterTablePanel query={query} onQuery={setQuery} placeholder="Cari kode, vendor, kontak, atau alamat..." addLabel="Tambah Vendor" onAdd={onAdd} count={filtered.length} columns={["No.", "Kode", "Nama Vendor", "Kemampuan", "Tarif Dekorasi", "Kontak", "Alur QC", "Rekening", "Status", "Aksi"]}>
+          <table className="master-data-table vendor-master-table"><thead><tr><th>No.</th><th>Kode</th><th>Nama Vendor</th><th>Kemampuan</th><th>Tarif Dekorasi</th><th>Kontak</th><th>Alur QC</th><th>Rekening</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
+          {filtered.map((v, index) => {
             const target = qcLocations.find((x) => x.code === v.qcLocationCode);
             return (
-              <article key={v.code}>
-                <div>
-                  <span>{v.code}</span>
-                  <em>{v.active ? "Aktif" : "Nonaktif"}</em>
-                </div>
-                <h2>{v.name}</h2>
-                <small>ALUR QUALITY CONTROL</small>
-                <p>
-                  <b>
-                    {v.qcMode === "vendor"
-                      ? "QC langsung di vendor"
-                      : "QC internal setelah masuk gudang"}
-                  </b>
-                </p>
-                {v.qcMode === "vendor" ? (
-                  <>
-                    <small>PETUGAS QC VENDOR</small>
-                    <p>{v.qcOfficer || "Belum diisi"}</p>
-                  </>
-                ) : (
-                  <>
-                    <small>TUJUAN · PENERIMA QC</small>
-                    <p>
-                      {target
-                        ? `${target.location} · ${target.recipient}`
-                        : "Belum dipilih"}
-                    </p>
-                  </>
-                )}
-                <small>PENANGGUNG JAWAB · KONTAK</small>
-                <p>
-                  {v.contact || "Belum diisi"} · {v.phone || "—"}
-                </p>
-                <footer>
-                  <span>{v.address || "Alamat belum diisi"}</span>
-                  <div className="master-actions">
-                    <button onClick={() => onEdit(v)}>✎ Edit</button>
-                    <button className="danger" onClick={() => onDelete(v)}>
-                      ♲ Hapus
-                    </button>
-                  </div>
-                </footer>
-              </article>
+              <tr key={v.code}><td data-label="No.">{index + 1}</td><td data-label="Kode"><b>{v.code}</b></td><td data-label="Nama Vendor"><b>{v.name}</b><small>{v.address || "Alamat belum diisi"}</small></td><td data-label="Kemampuan"><span className="master-chip-list">{(v.capabilities ?? ["sewing"]).map((capability) => <small key={capability}>{capability === "sewing" ? "Jahit" : capability === "screenprint" ? "Sablon" : "Bordir"}</small>)}</span></td><td data-label="Tarif Dekorasi">{(v.capabilities ?? []).includes("screenprint") && <small>Sablon {rupiah(v.screenprintRate ?? 0)}/unit</small>}{(v.capabilities ?? []).includes("embroidery") && <small>Bordir {rupiah(v.embroideryRate ?? 0)}/unit</small>}{!(v.capabilities ?? []).some((item) => item !== "sewing") && <small>—</small>}</td><td data-label="Kontak"><b>{v.contact || "Belum diisi"}</b><small>{v.phone || "Nomor belum diisi"}</small></td><td data-label="Alur QC"><b>{v.qcMode === "vendor" ? "QC di vendor" : "QC internal"}</b><small>{v.qcMode === "vendor" ? v.qcOfficer || "Petugas belum diisi" : target ? `${target.location} · ${target.recipient}` : "Tujuan belum dipilih"}</small></td><td data-label="Rekening">{v.bankName && v.accountNumber ? <><b>{v.bankName} {v.accountNumber}</b><small>a.n. {v.accountHolder || v.name}</small></> : "Belum diisi"}</td><td data-label="Status"><span className={`master-status ${v.active ? "active" : "inactive"}`}>{v.active ? "Aktif" : "Nonaktif"}</span></td><td data-label="Aksi"><MasterRowActions onEdit={() => onEdit(v)} onDelete={() => onDelete(v)} /></td></tr>
             );
           })}
-        </div>
+          </tbody></table>
+        </MasterTablePanel>
       )}
     </>
   );
@@ -5775,56 +7719,109 @@ function StagePage({
   rows,
   sources,
   allRecords,
+  weeklyPayments,
+  qcLocations,
   sourceCount,
   onAdd,
   onPrintBundle,
   onSendBundles,
   onUpdatePayment,
+  onPrintPayment,
+  onVoidPayment,
+  onSetCuttingRate,
+  onSetVendorRate,
+  onSetQCRate,
+  onSetDecorationRate,
+  onCreateWeeklyPayment,
+  onPrintWeeklyPayment,
+  onVoidWeeklyPayment,
 }: {
   active: string;
   rows: RecordRow[];
   sources: RecordRow[];
   allRecords: Record<string, RecordRow[]>;
+  weeklyPayments: WeeklyPayment[];
+  qcLocations: QCLocation[];
   sourceCount: number;
   onAdd: () => void;
   onPrintBundle: (bundle: RecordRow) => void;
   onSendBundles: (bundleIds: string[]) => void;
-  onUpdatePayment: (receipt: RecordRow) => void;
+  onUpdatePayment: (
+    receipt: RecordRow,
+    kind: "vendor" | "cutting",
+  ) => void;
+  onPrintPayment: (
+    receipt: RecordRow,
+    payment: PaymentEntry,
+    kind: "vendor" | "cutting",
+  ) => void;
+  onVoidPayment: (receipt: RecordRow, payment: PaymentEntry) => void;
+  onSetCuttingRate: (cutting: RecordRow) => void;
+  onSetVendorRate: (receipt: RecordRow) => void;
+  onSetQCRate: (inspection: RecordRow) => void;
+  onSetDecorationRate: (row: RecordRow) => void;
+  onCreateWeeklyPayment: (
+    kind: WeeklyPaymentKind,
+    payee: string,
+    rows: RecordRow[],
+    periodStart: string,
+    periodEnd: string,
+  ) => void;
+  onPrintWeeklyPayment: (payment: WeeklyPayment) => void;
+  onVoidWeeklyPayment: (payment: WeeklyPayment) => void;
 }) {
   const [bundleQuery, setBundleQuery] = useState("");
+  const [bundleMobileView, setBundleMobileView] = useState<"cards" | "table">("table");
   const [bundleStatus, setBundleStatus] = useState<"ready" | "sent" | "all">(
     "ready",
   );
   const [bundlePeriod, setBundlePeriod] = useState<
     "all" | "today" | "week" | "month"
   >("all");
+  const [bundlePage, setBundlePage] = useState(1);
+  const [bundlePageSize, setBundlePageSize] = useState(10);
   const [selectedOperationalBundles, setSelectedOperationalBundles] =
     useState<string[]>([]);
+  const [processTableQuery, setProcessTableQuery] = useState("");
+  const [processTablePage, setProcessTablePage] = useState(1);
+  const [processTablePageSize, setProcessTablePageSize] = useState(10);
+  const [productionColumnMenu, setProductionColumnMenu] = useState(false);
+  const [productionVisibleColumns, setProductionVisibleColumns] = useState<Record<string, boolean[]>>({});
+  const [weeklyReferenceDate, setWeeklyReferenceDate] = useState(
+    localDateString(),
+  );
+  const [weeklyPeriodChoice, setWeeklyPeriodChoice] = useState<
+    "current" | "previous" | "custom"
+  >("current");
   const info = stageInfo[active];
   const blocked = !!info.source && sourceCount === 0;
-  const poCutBalance = (po: RecordRow) =>
-    sum(
-      subtractVariants(
-        po.variants,
-        (allRecords.Cutting ?? [])
-          .filter((x) => x.sourceId === po.id)
-          .flatMap((x) => x.variants),
-      ),
-    );
-  const waitingPO =
-    active === "Cutting" ? sources.filter((x) => poCutBalance(x) > 0) : [];
-  const bookedPO =
-    active === "Cutting" ? sources.filter((x) => poCutBalance(x) === 0) : [];
   const bundleCards =
     active === "Bundle"
       ? sources.map((source) => {
           const used = (allRecords.Bundle ?? [])
             .filter((x) => x.sourceId === source.id)
             .reduce((n, x) => n + x.total, 0);
+          const decorationJobs = (allRecords["Sablon/Bordir"] ?? []).filter(
+            (row) => row.sourceId === source.id && row.decorationRequiredBeforeBundle !== false,
+          );
+          const expectedDecoration = source.decorationProcess ?? "none";
+          const expectedTypesReady =
+            expectedDecoration === "screenprint" ? decorationJobs.some((row) => row.decorationType === "screenprint")
+            : expectedDecoration === "embroidery" ? decorationJobs.some((row) => row.decorationType === "embroidery")
+            : expectedDecoration === "both" ? decorationJobs.some((row) => row.decorationType === "screenprint") && decorationJobs.some((row) => row.decorationType === "embroidery")
+            : true;
+          const explicitFinalStep = decorationJobs.some((row) => typeof row.decorationFinalStep === "boolean");
+          const decorationReady = decorationJobs.length > 0 && expectedTypesReady &&
+            (!explicitFinalStep || decorationJobs.some((row) => row.decorationFinalStep === true)) &&
+            decorationJobs.every((row) => (row.decorationCompleted ?? 0) >= row.total);
+          const released =
+            (source.decorationProcess ?? "none") === "none"
+              ? source.total
+              : decorationReady ? source.total : 0;
           return {
             source,
             used,
-            left: Math.max(0, source.total - used),
+            left: Math.max(0, released - used),
             count: (allRecords.Bundle ?? []).filter(
               (x) => x.sourceId === source.id,
             ).length,
@@ -5835,11 +7832,80 @@ function StagePage({
     (allRecords["Pengiriman Vendor"] ?? []).map((x) => x.sourceId),
   );
   const now = new Date(),
-    todayString = now.toISOString().slice(0, 10),
+    todayString = localDateString(now),
     weekStartDate = new Date(now);
   weekStartDate.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  const weekStartString = weekStartDate.toISOString().slice(0, 10),
+  const weekStartString = localDateString(weekStartDate),
     monthStartString = `${todayString.slice(0, 8)}01`,
+    weeklyPeriod = mondaySaturday(
+      new Date(`${weeklyReferenceDate}T12:00:00`),
+    ),
+    effectiveQCRate = (row: RecordRow) => {
+      if ((row.qcRate ?? 0) > 0) return row.qcRate ?? 0;
+      const shipment = (allRecords["Pengiriman QC"] ?? []).find(
+        (item) => item.id === row.sourceId,
+      );
+      return (
+        qcLocations.find(
+          (location) =>
+            location.location === shipment?.destination ||
+            location.recipient === row.qcOfficer,
+        )?.rate ?? 0
+      );
+    },
+    qcPayee = (row: RecordRow) => {
+      const shipment = (allRecords["Pengiriman QC"] ?? []).find(
+        (item) => item.id === row.sourceId,
+      );
+      const location = qcLocations.find(
+        (item) => item.location === shipment?.destination,
+      );
+      return row.qcOfficer || location?.recipient || shipment?.destination || "Petugas QC belum dicatat";
+    },
+    vendorShipment = (row: RecordRow) =>
+      (allRecords["Pengiriman Vendor"] ?? []).find(
+        (item) => item.id === row.sourceId,
+      ),
+    vendorPayee = (row: RecordRow) =>
+      vendorShipment(row)?.destination || "Vendor belum ditemukan",
+    weeklyRate = (row: RecordRow) =>
+      active === "Cutting"
+        ? row.cuttingRate ?? 0
+        : active === "Quality Control"
+          ? effectiveQCRate(row)
+          : active === "Sablon/Bordir"
+            ? row.decorationRate ?? 0
+            : row.sewingRate ?? vendorShipment(row)?.sewingRate ?? 0,
+    weeklyKind: WeeklyPaymentKind =
+      active === "Cutting"
+        ? "cutting"
+        : active === "Quality Control"
+          ? "qc"
+          : active === "Sablon/Bordir"
+            ? "decoration"
+            : "vendor",
+    weeklySourceRows =
+      active === "Cutting" || active === "Quality Control" || active === "Penerimaan Gudang" || active === "Sablon/Bordir"
+        ? rows.filter(
+            (row) =>
+              row.date >= weeklyPeriod.start &&
+              row.date <= weeklyPeriod.end,
+          )
+        : [],
+    weeklyGroups = Object.entries(
+      weeklySourceRows.reduce<Record<string, RecordRow[]>>((groups, row) => {
+        const payee =
+          active === "Cutting"
+            ? row.officer || "Pelaksana belum dicatat"
+            : active === "Quality Control"
+              ? qcPayee(row)
+              : active === "Sablon/Bordir"
+                ? row.destination || "Vendor dekorasi belum dicatat"
+              : vendorPayee(row);
+        groups[payee] = [...(groups[payee] ?? []), row];
+        return groups;
+      }, {}),
+    ),
     bundleMatchesPeriod = (bundle: RecordRow) => {
       if (bundlePeriod === "today") return bundle.date === todayString;
       if (bundlePeriod === "week") return bundle.date >= weekStartString;
@@ -5875,6 +7941,16 @@ function StagePage({
             );
           })
         : [],
+    bundlePageCount = Math.max(1, Math.ceil(operationalBundles.length / bundlePageSize)),
+    safeBundlePage = Math.min(bundlePage, bundlePageCount),
+    pagedOperationalBundles = operationalBundles.slice((safeBundlePage - 1) * bundlePageSize, safeBundlePage * bundlePageSize),
+    processTableRows = rows.filter((row) => {
+      const query = processTableQuery.trim().toLowerCase();
+      return !query || [row.id, row.sourceId, row.poId, row.modelName, row.modelCode, row.officer, ...row.variants.flatMap((variant) => [variant.color, variant.size])].filter(Boolean).join(" ").toLowerCase().includes(query);
+    }),
+    processTablePageCount = Math.max(1, Math.ceil(processTableRows.length / processTablePageSize)),
+    safeProcessTablePage = Math.min(processTablePage, processTablePageCount),
+    pagedProcessTableRows = processTableRows.slice((safeProcessTablePage - 1) * processTablePageSize, safeProcessTablePage * processTablePageSize),
     selectedBundleRows = rows.filter((bundle) =>
       selectedOperationalBundles.includes(bundle.id),
     ),
@@ -5882,10 +7958,28 @@ function StagePage({
     selectedBundleUnits = selectedBundleRows.reduce(
       (total, bundle) => total + bundle.total,
       0,
-    );
+    ),
+    isProcessLedger = ["Order Produksi", "Cutting", "Sablon/Bordir"].includes(active),
+    isModernProduction = ["Cutting", "Sablon/Bordir", "Bundle"].includes(active),
+    processLedgerTitle = active === "Order Produksi" ? "Daftar order produksi lama" : active === "Cutting" ? "Daftar batch Cutting" : "Daftar hasil Sablon/Bordir",
+    processLedgerDescription = active === "Order Produksi" ? "Arsip transaksi lama sebelum alur dimulai dari Cutting." : active === "Cutting" ? "Setiap hasil Cutting menjadi referensi awal sampai stok jadi." : "Hasil proses tambahan yang siap dilanjutkan menjadi bundle.";
+  const productionColumns = active === "Bundle"
+      ? ["No.", "Pilih", "Kode Bundle", "Tanggal", "Batch Cutting", "Model", "Warna & Ukuran", "Total", "Status", "Aksi"]
+      : active === "Cutting"
+        ? ["No.", "Kode Cutting", "Tanggal", "Referensi Produksi", "Model", "PIC Cutting", "Warna & Ukuran", "Total", "Status"]
+        : active === "Sablon/Bordir"
+          ? ["No.", "Kode Proses", "Tanggal", "Referensi Produksi", "Model", "PIC Proses", "Warna & Ukuran", "Total", "Status"]
+          : ["No.", "Kode", "Tanggal", "Referensi", "Model", "Warna & Ukuran", "Total", "Status"],
+    visibleProductionColumns = productionVisibleColumns[active] ?? productionColumns.map(() => true),
+    allProductionColumnsVisible = visibleProductionColumns.every(Boolean),
+    productionColumnHiddenClasses = visibleProductionColumns.map((visible, index) => visible ? "" : `hide-production-col-${index + 1}`).filter(Boolean).join(" "),
+    toggleProductionColumn = (index: number) => setProductionVisibleColumns((current) => ({ ...current, [active]: visibleProductionColumns.map((visible, itemIndex) => itemIndex === index ? !visible : visible) })),
+    setAllProductionColumns = (visible: boolean) => setProductionVisibleColumns((current) => ({ ...current, [active]: productionColumns.map(() => visible) }));
+  const productionAddDisabled = blocked || (active === "Bundle" && bundleCards.every((item) => item.left === 0)),
+    productionAddLabel = active === "Cutting" ? "Catat hasil Cutting" : active === "Sablon/Bordir" ? "Buat pekerjaan dekorasi" : "Buat bundle berikutnya";
   const availableToShip =
     active === "Pengiriman Vendor"
-      ? sources.filter((x) => !shippedIds.has(x.id)).length
+      ? sources.filter((bundle) => !shippedIds.has(bundle.id)).length
       : 0;
   const vendorCards =
     active === "Penerimaan Gudang"
@@ -5906,9 +8000,27 @@ function StagePage({
   const activeVendorCards = vendorCards.filter((x) => x.left > 0);
   const completedVendorCards = vendorCards.filter((x) => x.left === 0);
   const downstreamIds = new Set(rows.map((x) => x.sourceId));
+  const remainingQCForSource = (source: RecordRow) =>
+    subtractVariants(
+      source.variants,
+      (allRecords["Pengiriman QC"] ?? [])
+        .filter((row) => row.sourceId === source.id)
+        .flatMap((row) => row.variants),
+    );
   const availableOnce =
     active === "Pengiriman QC" || active === "Quality Control"
-      ? sources.filter((x) => !downstreamIds.has(x.id)).length
+      ? sources.filter(
+          (x) =>
+            (active === "Pengiriman QC"
+              ? sum(remainingQCForSource(x)) > 0
+              : !downstreamIds.has(x.id)) &&
+            !(
+              active === "Pengiriman QC" &&
+              (allRecords["Quality Control"] ?? []).some(
+                (qc) => qc.sourceId === x.id && qc.qcMode === "vendor",
+              )
+            ),
+        ).length
       : 0;
   const availableSpecial = [
     "Rework",
@@ -5946,18 +8058,16 @@ function StagePage({
         })
       : [];
   return (
-    <>
-      <div className="page-title">
+    <div className="stage-page-layout">
+      {!isModernProduction && !["Pengiriman Vendor", "Penerimaan Gudang"].includes(active) && !qcOperationalStages.has(active) && <div className="page-title">
         <div>
-          <p className="overline">PROSES TERHUBUNG</p>
           <h1>{info.title}</h1>
-          <span>{info.desc}</span>
+          <><p className="overline">PROSES TERHUBUNG</p><span>{info.desc}</span></>
         </div>
-        <button
+        {!tableToolbarStages.has(active) && <button
           className="primary"
           disabled={
             blocked ||
-            (active === "Cutting" && waitingPO.length === 0) ||
             (active === "Bundle" && bundleCards.every((x) => x.left === 0)) ||
             (active === "Pengiriman Vendor" && availableToShip === 0) ||
             (active === "Penerimaan Gudang" &&
@@ -5979,9 +8089,11 @@ function StagePage({
           {active === "Order Produksi"
             ? "Buat PO"
             : active === "Cutting"
-              ? "Proses PO tersedia"
+              ? "Catat hasil Cutting"
               : active === "Bundle"
                 ? "Buat bundle berikutnya"
+                : active === "Sablon/Bordir"
+                  ? "Buat pekerjaan dekorasi"
                 : active === "Penerimaan Gudang"
                   ? "Terima setoran vendor"
                   : active === "Pengiriman QC"
@@ -5997,8 +8109,8 @@ function StagePage({
                             : active === "Stok Barang Jadi"
                               ? "Masukkan stok"
                               : "Catat proses"}
-        </button>
-      </div>
+        </button>}
+      </div>}
       {blocked && (
         <div className="dependency">
           <b>Proses sebelumnya belum tersedia</b>
@@ -6008,58 +8120,191 @@ function StagePage({
           </span>
         </div>
       )}
-      {active === "Cutting" && sourceCount > 0 && (
-        <section className="queue-panel">
+      {["Rework", "Penerimaan Rework", "QC Ulang"].includes(active) && (
+        <div className="dependency qc-no-charge">
+          <b>Perbaikan tidak ditagihkan</b>
+          <span>Repair dan QC ulang menjadi tanggung jawab vendor penjahit. Proses tetap dicatat untuk pelacakan unit, tanpa biaya tambahan.</span>
+        </div>
+      )}
+      {(active === "Cutting" || active === "Quality Control" || active === "Penerimaan Gudang" || active === "Sablon/Bordir") && rows.length > 0 && (
+        <section className="receipt-payment-list weekly-payment-list">
           <header>
             <div>
-              <small>ANTREAN AKTIF</small>
-              <h2>PO masih memiliki sisa Cutting</h2>
+              <small>REKAP PEMBAYARAN MINGGUAN</small>
+              <h2>{active === "Cutting" ? "Cutting Senin–Sabtu" : active === "Quality Control" ? "QC Senin–Sabtu" : active === "Sablon/Bordir" ? "Sablon & Bordir Senin–Sabtu" : "Vendor Jahit Senin–Sabtu"}</h2>
             </div>
-            <b>{waitingPO.length} PO tersedia</b>
+            <b>{weeklyGroups.length} data</b>
           </header>
-          {waitingPO.length === 0 ? (
-            <p className="queue-empty">
-              Semua jumlah PO sudah selesai dipotong. Buat PO produksi baru
-              untuk proses Cutting berikutnya.
-            </p>
-          ) : (
-            <div>
-              {waitingPO.map((po) => (
-                <article key={po.id}>
-                  <span>
-                    <b>{po.id}</b>
-                    <small>{po.date}</small>
-                  </span>
-                  <span>
-                    <b>{po.modelName}</b>
-                    <small>{po.modelCode}</small>
-                  </span>
-                  <strong>{poCutBalance(po)} unit tersisa</strong>
-                </article>
-              ))}
+          <div className="weekly-payment-tools">
+            <div className="weekly-period-picker">
+              <label>
+                <span>Periode</span>
+                <select
+                  value={weeklyPeriodChoice}
+                  onChange={(event) => {
+                    const choice = event.target.value as "current" | "previous" | "custom";
+                    setWeeklyPeriodChoice(choice);
+                    if (choice === "current") setWeeklyReferenceDate(localDateString());
+                    if (choice === "previous") {
+                      const previousWeek = new Date();
+                      previousWeek.setDate(previousWeek.getDate() - 7);
+                      setWeeklyReferenceDate(localDateString(previousWeek));
+                    }
+                  }}
+                >
+                  <option value="current">Minggu ini</option>
+                  <option value="previous">Minggu lalu</option>
+                  <option value="custom">Pilih tanggal</option>
+                </select>
+              </label>
+              {weeklyPeriodChoice === "custom" && (
+                <label>
+                  <span>Tanggal acuan</span>
+                  <input type="date" value={weeklyReferenceDate} onChange={(e) => setWeeklyReferenceDate(e.target.value)} />
+                </label>
+              )}
             </div>
+            <p><span>Periode aktif</span><b>{weeklyPeriod.start} – {weeklyPeriod.end}</b></p>
+          </div>
+          <div className="weekly-payment-table-wrap">
+            {weeklyGroups.length === 0 ? (
+              <p className="queue-empty">Belum ada pekerjaan yang perlu direkap pada minggu ini.</p>
+            ) : <table className="weekly-payment-table"><thead><tr><th>No.</th><th>{active === "Penerimaan Gudang" ? "Vendor" : "Pelaksana"}</th><th>Transaksi</th><th>Unit</th><th>Tagihan</th><th>Dibayar</th><th>Sisa</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{weeklyGroups.map(([payee, groupRows], groupIndex) => {
+              const totalUnits = groupRows.reduce((total, row) => total + row.total, 0),
+                totalAmount = groupRows.reduce(
+                  (total, row) =>
+                    total + row.total * weeklyRate(row),
+                  0,
+                ),
+                missingRate = groupRows.some((row) => weeklyRate(row) <= 0),
+                paid = weeklyKind === "vendor" || weeklyKind === "decoration"
+                  ? groupRows.reduce(
+                      (total, receipt) => total + paidForReceipt(receipt),
+                      0,
+                    )
+                  : weeklyPaidAmount(
+                      weeklyPayments,
+                      weeklyKind,
+                      payee,
+                      weeklyPeriod.start,
+                      weeklyPeriod.end,
+                    ) + (weeklyKind === "cutting" ? groupRows.reduce((total, row) => total + paidForReceipt(row), 0) : 0),
+                remaining = Math.max(0, totalAmount - paid),
+                status = paid <= 0 ? "Belum dibayar" : remaining > 0 ? "DP sebagian" : "Lunas";
+              return (
+                <tr key={payee}>
+                  <td data-label="No.">{groupIndex + 1}</td>
+                  <td data-label={active === "Penerimaan Gudang" ? "Vendor" : "Pelaksana"}><details className="weekly-payee-details"><summary><b>{payee}</b><small>Lihat rincian batch</small></summary><div>{groupRows.map((row) => {
+                      const rate = weeklyRate(row);
+                      return (
+                        <p key={row.id} className={rate <= 0 ? "missing-rate-line" : ""}>
+                          <span><b>{row.id}</b><small>{row.modelName}</small></span>
+                          <strong>{row.total} × {rupiah(rate)}</strong>
+                          {rate <= 0 && (
+                            <button type="button" onClick={() => weeklyKind === "vendor" ? onSetVendorRate(row) : weeklyKind === "decoration" ? onSetDecorationRate(row) : weeklyKind === "cutting" ? onSetCuttingRate(row) : onSetQCRate(row)}>
+                              Lengkapi tarif
+                            </button>
+                          )}
+                        </p>
+                      );
+                    })}</div></details></td>
+                  <td data-label="Transaksi">{groupRows.length}</td>
+                  <td data-label="Unit"><b>{totalUnits}</b></td>
+                  <td data-label="Tagihan"><b>{rupiah(totalAmount)}</b></td>
+                  <td data-label="Dibayar">{rupiah(paid)}</td>
+                  <td data-label="Sisa"><strong>{rupiah(remaining)}</strong></td>
+                  <td data-label="Status"><em className={`weekly-payment-status ${missingRate || paid <= 0 ? "unpaid" : remaining > 0 ? "partial" : "paid"}`}>{missingRate ? "Tarif belum lengkap" : status}</em></td>
+                  <td data-label="Aksi">{remaining > 0 ? <button className="weekly-payment-action" type="button" disabled={missingRate} onClick={() => onCreateWeeklyPayment(weeklyKind, payee, groupRows.map((row) => weeklyKind === "qc" ? { ...row, qcRate: effectiveQCRate(row) } : weeklyKind === "vendor" ? { ...row, sewingRate: weeklyRate(row) } : weeklyKind === "decoration" ? { ...row, decorationRate: weeklyRate(row) } : row), weeklyPeriod.start, weeklyPeriod.end)}>{paid > 0 ? "Tambah bayar" : "Catat bayar"}</button> : <span className="weekly-payment-complete">Selesai</span>}</td>
+                </tr>
+              );
+            })}</tbody></table>}
+          </div>
+          {weeklyPayments.some((payment) => payment.kind === weeklyKind) && (
+            <details className="completed-cuttings weekly-payment-history">
+              <summary><span>✓</span><b>Riwayat rekap pembayaran</b><small>Klik untuk melihat rekap yang sudah dibukukan</small></summary>
+              <div>
+                {weeklyPayments.filter((payment) => payment.kind === weeklyKind).sort((a, b) => b.paymentDate.localeCompare(a.paymentDate)).map((payment) => (
+                  <p key={payment.id} className={payment.voided ? "voided" : ""}>
+                    <b>{payment.id}</b>
+                    <span>{payment.payee} · {payment.periodStart}–{payment.periodEnd}</span>
+                    <em>{payment.voided ? `Dibatalkan · ${payment.voidReason}` : `${payment.totalUnits} unit · dibayar ${rupiah(payment.paymentAmount ?? payment.totalAmount)}`}</em>
+                    <button type="button" onClick={() => onPrintWeeklyPayment(payment)}>Cetak</button>
+                    {!payment.voided && <button className="danger" type="button" onClick={() => onVoidWeeklyPayment(payment)}>Batalkan</button>}
+                  </p>
+                ))}
+              </div>
+            </details>
           )}
         </section>
       )}
-      {active === "Cutting" && bookedPO.length > 0 && (
-        <details className="completed-cuttings">
-          <summary>
-            <span>✓</span>
-            <b>{bookedPO.length} PO selesai dipotong</b>
-            <small>Saldo Cutting nol · klik untuk melihat</small>
-          </summary>
-          <div>
-            {bookedPO.map((po) => (
-              <p key={po.id}>
-                <b>{po.id}</b>
-                <span>{po.modelName}</span>
-                <em>{po.total} unit · selesai</em>
-              </p>
-            ))}
+      {active === "Cutting" && false && rows.some((row) => legacyPayment(row).length > 0) && (
+        <section className="receipt-payment-list cutting-payment-list">
+          <header>
+            <div>
+              <small>PEMBAYARAN CUTTING</small>
+              <h2>Tagihan jasa cutting</h2>
+              <span>Tagihan dan pembayaran dipisahkan untuk setiap kode CUT.</span>
+            </div>
+            <b>{rows.length} batch</b>
+          </header>
+          <div className="receipt-payment-cards">
+            {rows.map((cutting) => {
+              const rate = cutting.cuttingRate ?? 0,
+                bill = cutting.total * rate,
+                paid = paidForReceipt(cutting),
+                history = legacyPayment(cutting),
+                status = paymentStatus(bill, paid),
+                statusClass = status === "Lunas" ? "paid" : status === "DP sebagian" ? "partial" : "unpaid";
+              return (
+                <article key={cutting.id}>
+                  <header>
+                    <div>
+                      <b>{cutting.officer || "Pelaksana belum dicatat"}</b>
+                      <span>{cutting.id} · {cutting.modelName} · {cutting.poId}</span>
+                    </div>
+                    <em className={statusClass}>{status}</em>
+                  </header>
+                  <div className="payment-totals">
+                    <p><span>Hasil cutting</span><b>{cutting.total} unit</b></p>
+                    <p><span>Tarif</span><b>{rupiah(rate)}</b></p>
+                    <p><span>Tagihan</span><b>{rupiah(bill)}</b></p>
+                    <p><span>Sudah dibayar</span><b>{rupiah(paid)}</b></p>
+                    <p><span>Sisa</span><strong>{rupiah(Math.max(0, bill - paid))}</strong></p>
+                  </div>
+                  {history.length > 0 && (
+                    <div className="payment-history">
+                      <b>RIWAYAT PEMBAYARAN</b>
+                      {history.map((payment) => (
+                        <div className={payment.voided ? "voided" : ""} key={payment.id}>
+                          <span>
+                            <strong>{payment.id}</strong>
+                            <small>{payment.date} · {payment.pic}{payment.note ? ` · ${payment.note}` : ""}</small>
+                          </span>
+                          <b>{rupiah(payment.amount)}</b>
+                          <span className="payment-history-actions">
+                            <button type="button" onClick={() => onPrintPayment(cutting, payment, "cutting")}>Cetak</button>
+                            {!payment.voided && <button type="button" className="danger" onClick={() => onVoidPayment(cutting, payment)}>Batalkan</button>}
+                          </span>
+                          {payment.voided && <small className="void-reason">DIBATALKAN · {payment.voidReason}</small>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <footer>
+                    <span>{paid > 0 && cutting.paymentDate ? `Pembayaran terakhir ${cutting.paymentDate}` : rate > 0 ? "Belum ada pembayaran" : "Tarif cutting belum dicatat"}</span>
+                    {rate <= 0 ? (
+                      <button type="button" onClick={() => onSetCuttingRate(cutting)}>Atur tarif</button>
+                    ) : paid < bill ? (
+                      <span className="weekly-only-note">Pembayaran dicatat melalui rekap mingguan di atas.</span>
+                    ) : null}
+                  </footer>
+                </article>
+              );
+            })}
           </div>
-        </details>
+        </section>
       )}
-      {active === "Pengiriman Vendor" && sourceCount > 0 && (
+      {false && active === "Pengiriman Vendor" && sourceCount > 0 && (
         <div className="availability">
           <div>
             <small>BUNDLE TERSEDIA DI GUDANG</small>
@@ -6072,7 +8317,7 @@ function StagePage({
           </p>
         </div>
       )}
-      {(active === "Pengiriman QC" || active === "Quality Control") &&
+      {false && (active === "Pengiriman QC" || active === "Quality Control") &&
         sourceCount > 0 && (
           <div className="availability">
             <div>
@@ -6085,12 +8330,13 @@ function StagePage({
               <span>transaksi</span>
             </div>
             <p>
-              Transaksi yang sudah dibukukan otomatis keluar dari antrean aktif
-              dan tetap tersimpan di riwayat.
+              {active === "Pengiriman QC"
+                ? "Setoran tetap tersedia sampai seluruh warna dan ukuran selesai dikirim ke QC."
+                : "Kiriman yang sudah diperiksa otomatis keluar dari antrean aktif dan tetap tersimpan di riwayat."}
             </p>
           </div>
         )}
-      {active === "Quality Control" && qcSummary.length > 0 && (
+      {false && active === "Quality Control" && qcSummary.length > 0 && (
         <div className="qc-dashboard">
           {qcSummary.map(({ q, vendor, receipt, shipment }) => (
             <article key={q.id}>
@@ -6130,7 +8376,7 @@ function StagePage({
           ))}
         </div>
       )}
-      {active === "Penerimaan Gudang" && activeVendorCards.length > 0 && (
+      {false && active === "Penerimaan Gudang" && activeVendorCards.length > 0 && (
         <div className="vendor-progress">
           {activeVendorCards.map((x) => (
             <article key={x.source.id}>
@@ -6167,7 +8413,7 @@ function StagePage({
           ))}
         </div>
       )}
-      {active === "Penerimaan Gudang" && completedVendorCards.length > 0 && (
+      {false && active === "Penerimaan Gudang" && completedVendorCards.length > 0 && (
         <details className="completed-cuttings">
           <summary>
             <span>✓</span>
@@ -6189,7 +8435,7 @@ function StagePage({
           </div>
         </details>
       )}
-      {active === "Penerimaan Gudang" && rows.length > 0 && (
+      {false && active === "Penerimaan Gudang" && rows.length > 0 && (
         <section className="receipt-payment-list">
           <header>
             <div>
@@ -6206,7 +8452,8 @@ function StagePage({
                 ),
                 rate = receipt.sewingRate ?? shipment?.sewingRate ?? 0,
                 bill = receipt.total * rate,
-                paid = receipt.paidAmount ?? 0,
+                paid = paidForReceipt(receipt),
+                history = legacyPayment(receipt),
                 status = paymentStatus(bill, paid),
                 statusClass =
                   status === "Lunas"
@@ -6223,13 +8470,55 @@ function StagePage({
                     </div>
                     <em className={statusClass}>{status}</em>
                   </header>
-                  <div>
+                  <div className="payment-totals">
                     <p><span>Setoran</span><b>{receipt.total} unit</b></p>
                     <p><span>Tarif</span><b>{rupiah(rate)}</b></p>
                     <p><span>Tagihan</span><b>{rupiah(bill)}</b></p>
                     <p><span>Sudah dibayar</span><b>{rupiah(paid)}</b></p>
                     <p><span>Sisa</span><strong>{rupiah(Math.max(0, bill - paid))}</strong></p>
                   </div>
+                  {history.length > 0 && (
+                    <div className="payment-history">
+                      <b>RIWAYAT PEMBAYARAN</b>
+                      {history.map((payment) => (
+                        <div
+                          className={payment.voided ? "voided" : ""}
+                          key={payment.id}
+                        >
+                          <span>
+                            <strong>{payment.id}</strong>
+                            <small>
+                              {payment.date} · {payment.pic}
+                              {payment.note ? ` · ${payment.note}` : ""}
+                            </small>
+                          </span>
+                          <b>{rupiah(payment.amount)}</b>
+                          <span className="payment-history-actions">
+                            <button
+                              type="button"
+                              onClick={() => onPrintPayment(receipt, payment, "vendor")}
+                            >
+                              Cetak
+                            </button>
+                            {!payment.voided && (
+                              <button
+                                type="button"
+                                className="danger"
+                                onClick={() => onVoidPayment(receipt, payment)}
+                              >
+                                Batalkan
+                              </button>
+                            )}
+                          </span>
+                          {payment.voided && (
+                            <small className="void-reason">
+                              DIBATALKAN · {payment.voidReason}
+                            </small>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <footer>
                     <span>
                       {paid > 0 && receipt.paymentDate
@@ -6238,9 +8527,11 @@ function StagePage({
                           ? "Belum ada pembayaran"
                           : "Tarif belum dicatat pada pengiriman"}
                     </span>
-                    <button type="button" onClick={() => onUpdatePayment(receipt)}>
-                      Perbarui pembayaran
-                    </button>
+                    {paid < bill && rate > 0 && (
+                      <button type="button" onClick={() => onUpdatePayment(receipt, "vendor")}>
+                        ＋ Catat DP / pembayaran
+                      </button>
+                    )}
                   </footer>
                 </article>
               );
@@ -6249,28 +8540,25 @@ function StagePage({
         </section>
       )}
       {active === "Bundle" && (
-        <section className="bundle-print-panel bundle-operations">
+        <section className={`bundle-print-panel bundle-operations mobile-${bundleMobileView} ${productionColumnHiddenClasses}`}>
           <header>
-            <div>
-              <small>BUNDLE OPERASIONAL</small>
-              <h2>Siap cetak dan kirim</h2>
-              <span>
-                Satu kartu untuk melihat isi, mencetak, dan melanjutkan ke
-                vendor.
-              </span>
-            </div>
-            <b>{operationalBundles.length} bundle tampil</b>
+            <div><h2>Bundle Siap Dikirim</h2></div>
+            <b>{operationalBundles.length} data</b>
           </header>
           <div className="bundle-operation-tools">
             <label className="bundle-search">
               <span>⌕</span>
               <input
                 type="search"
-                placeholder="Cari PO, cutting, bundle, model, warna, size, PIC..."
+                placeholder="Cari batch Cutting, bundle, model, warna, size, PIC..."
                 value={bundleQuery}
-                onChange={(event) => setBundleQuery(event.target.value)}
+                onChange={(event) => { setBundleQuery(event.target.value); setBundlePage(1); }}
               />
             </label>
+            <div className="master-column-control production-column-control">
+              <button type="button" className="master-column-button" aria-expanded={productionColumnMenu} onClick={() => setProductionColumnMenu((open) => !open)}><span>▥</span> Kolom</button>
+              {productionColumnMenu && <div className="master-column-menu"><header><b>KOLOM</b><b>TAMPIL</b></header><label className="toggle-all"><span>Tampilkan semua</span><input type="checkbox" checked={allProductionColumnsVisible} onChange={() => setAllProductionColumns(!allProductionColumnsVisible)} /></label>{productionColumns.map((column, index) => <label key={column}><span>{column}</span><input type="checkbox" checked={visibleProductionColumns[index]} onChange={() => toggleProductionColumn(index)} /></label>)}</div>}
+            </div>
             <select
               aria-label="Status bundle"
               value={bundleStatus}
@@ -6279,6 +8567,7 @@ function StagePage({
                   event.target.value as "ready" | "sent" | "all",
                 );
                 setSelectedOperationalBundles([]);
+                setBundlePage(1);
               }}
             >
               <option value="ready">Belum dikirim</option>
@@ -6288,17 +8577,22 @@ function StagePage({
             <select
               aria-label="Rentang waktu bundle"
               value={bundlePeriod}
-              onChange={(event) =>
+              onChange={(event) => {
                 setBundlePeriod(
                   event.target.value as "all" | "today" | "week" | "month",
-                )
-              }
+                );
+                setBundlePage(1);
+              }}
             >
               <option value="all">Semua waktu</option>
               <option value="today">Hari ini</option>
               <option value="week">Minggu ini</option>
               <option value="month">Bulan ini</option>
             </select>
+          </div>
+          <div className="mobile-view-switch" role="group" aria-label="Tampilan Bundle siap dikirim">
+            <button type="button" className={bundleMobileView === "cards" ? "active" : ""} onClick={() => setBundleMobileView("cards")}><span>☷</span> Kartu</button>
+            <button type="button" className={bundleMobileView === "table" ? "active" : ""} onClick={() => setBundleMobileView("table")}><span>▥</span> Tabel</button>
           </div>
           {operationalBundles.length === 0 ? (
             <div className="bundle-operation-empty">
@@ -6309,20 +8603,17 @@ function StagePage({
               </span>
             </div>
           ) : (
-            <div className="bundle-print-grid">
-              {operationalBundles.map((bundle) => {
+            <div className="bundle-ledger-wrap"><table className="bundle-ledger-table"><thead><tr><th>No.</th><th>Pilih</th><th>Kode Bundle</th><th>Tanggal</th><th>Batch Cutting</th><th>Model</th><th>Warna & Ukuran</th><th>Total</th><th>Status</th><th>Aksi</th></tr></thead><tbody>
+              {pagedOperationalBundles.map((bundle, bundleIndex) => {
                 const sent = shippedIds.has(bundle.id),
                   selected = selectedOperationalBundles.includes(bundle.id),
                   incompatible =
                     !!selectedBundleModel &&
                     selectedBundleModel !== bundle.modelCode;
                 return (
-                  <article
-                    className={selected ? "selected" : ""}
-                    key={bundle.id}
-                  >
-                <header>
-                  <label>
+                  <tr className={selected ? "selected" : ""} key={bundle.id}>
+                    <td data-label="No.">{(safeBundlePage - 1) * bundlePageSize + bundleIndex + 1}</td>
+                    <td data-label="Pilih"><label className="bundle-ledger-check">
                     <input
                       type="checkbox"
                       checked={selected}
@@ -6340,25 +8631,12 @@ function StagePage({
                         )
                       }
                     />
-                    <div>
-                    <strong>{shortBundleCode(bundle.id)}</strong>
-                    <small>{bundle.id}</small>
-                    </div>
-                  </label>
-                  <b>{bundle.total} unit</b>
-                </header>
-                <p>
-                  <b>{bundle.modelName}</b>
-                  <span>
-                    PO {bundle.poId || "—"} · Cutting C
-                    {String(bundle.batchNo ?? 1).padStart(2, "0")}
-                  </span>
-                </p>
-                <span className={`bundle-operation-status ${sent ? "sent" : "ready"}`}>
-                  {sent ? "✓ Sudah dikirim" : "● Siap dikirim"}
-                </span>
-                <div className="bundle-print-variants">
-                  {bundle.variants
+                  </label></td>
+                  <td data-label="Kode Bundle"><span className="bundle-ledger-code"><strong>{shortBundleCode(bundle.id)}</strong><small>{bundle.id}</small></span></td>
+                  <td data-label="Tanggal">{bundle.date}</td>
+                  <td data-label="Batch Cutting"><span className="bundle-ledger-source"><b>{bundle.poId || bundle.sourceId}</b><small>{bundle.sourceId} · C{String(bundle.batchNo ?? 1).padStart(2, "0")}</small></span></td>
+                  <td data-label="Model"><b>{bundle.modelName}</b><small>{bundle.modelCode}</small></td>
+                  <td data-label="Warna & Ukuran"><span className="bundle-ledger-variants">{bundle.variants
                     .slice()
                     .sort((a, b) =>
                       a.color.localeCompare(b.color, "id") ||
@@ -6366,23 +8644,24 @@ function StagePage({
                     )
                     .map((variant) => (
                       <span key={`${variant.color}-${variant.size}`}>
-                        {variant.color} · {variant.size}
-                        <b>{variant.qty}</b>
+                        {variant.color} · {variant.size}: <b>{variant.qty}</b>
                       </span>
-                    ))}
-                </div>
-                <button
+                    ))}</span></td>
+                  <td data-label="Total"><b>{bundle.total}</b> unit</td>
+                  <td data-label="Status"><span className={`bundle-operation-status ${sent ? "sent" : "ready"}`}>{sent ? "Sudah dikirim" : "Siap dikirim"}</span></td>
+                  <td data-label="Aksi"><button
                   type="button"
                   className="bundle-print-button prominent"
                   onClick={() => onPrintBundle(bundle)}
                 >
-                  ▣ Cetak Kartu Bundle
-                </button>
-              </article>
+                  ▣ Cetak
+                </button></td>
+              </tr>
                 );
               })}
-            </div>
+            </tbody></table></div>
           )}
+          {operationalBundles.length > 0 && <footer className="process-ledger-footer bundle-ledger-footer"><label>Tampilkan <select value={bundlePageSize} onChange={(event) => { setBundlePageSize(Number(event.target.value)); setBundlePage(1); }}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select> data</label><span>Menampilkan {(safeBundlePage - 1) * bundlePageSize + 1}–{Math.min(safeBundlePage * bundlePageSize, operationalBundles.length)} dari {operationalBundles.length}</span><div><button type="button" disabled={safeBundlePage <= 1} onClick={() => setBundlePage((page) => Math.max(1, page - 1))}>‹</button><b>{safeBundlePage}</b><button type="button" disabled={safeBundlePage >= bundlePageCount} onClick={() => setBundlePage((page) => Math.min(bundlePageCount, page + 1))}>›</button></div></footer>}
           {selectedBundleRows.length > 0 && (
             <div className="bundle-selection-bar">
               <div>
@@ -6399,61 +8678,70 @@ function StagePage({
           )}
         </section>
       )}
-      {active !== "Bundle" && <section
-        className={`panel table-panel ${active === "Bundle" ? "bounded-table" : ""}`}
+      {active !== "Bundle" && !isModernProduction && !["Pengiriman Vendor", "Penerimaan Gudang"].includes(active) && !qcOperationalStages.has(active) && <section
+        className={`panel table-panel ${isProcessLedger ? "process-ledger-panel" : ""} ${isModernProduction ? "production-action-panel" : ""} ${isProcessLedger ? productionColumnHiddenClasses : ""}`}
       >
-        {rows.length === 0 ? (
+        {isProcessLedger && <>{active === "Order Produksi" && <header className="process-ledger-header"><div><small>DATA PRODUKSI</small><h2>{processLedgerTitle}</h2><p>{processLedgerDescription}</p></div><b>{processTableRows.length} data</b></header>}{isModernProduction ? <div className="production-action-toolbar"><span>Catat pekerjaan baru untuk menambah antrean aktif.</span><button className="primary production-toolbar-add" type="button" disabled={productionAddDisabled} onClick={onAdd}>＋ {productionAddLabel}</button></div> : <div className="process-ledger-tools"><label><span>⌕</span><input value={processTableQuery} onChange={(e) => { setProcessTableQuery(e.target.value); setProcessTablePage(1); }} placeholder={`Cari kode, model, PIC, warna, atau ukuran...`} /></label><div className="master-column-control production-column-control"><button type="button" className="master-column-button" aria-expanded={productionColumnMenu} onClick={() => setProductionColumnMenu((open) => !open)}><span>▥</span> Kolom</button>{productionColumnMenu && <div className="master-column-menu"><header><b>KOLOM</b><b>TAMPIL</b></header><label className="toggle-all"><span>Tampilkan semua</span><input type="checkbox" checked={allProductionColumnsVisible} onChange={() => setAllProductionColumns(!allProductionColumnsVisible)} /></label>{productionColumns.map((column, index) => <label key={column}><span>{column}</span><input type="checkbox" checked={visibleProductionColumns[index]} onChange={() => toggleProductionColumn(index)} /></label>)}</div>}</div></div>}</>}
+        {!isModernProduction && (rows.length === 0 || (isProcessLedger && processTableRows.length === 0) ? (
           <Empty
-            title={`Belum ada ${active.toLowerCase()}`}
+            title={rows.length > 0 ? "Tidak ada data sesuai pencarian" : `Belum ada ${active.toLowerCase()}`}
             text={
-              blocked
+              rows.length > 0
+                ? "Ubah kata pencarian untuk melihat transaksi lainnya."
+                : blocked
                 ? `Menunggu data dari ${info.source}.`
                 : "Mulai transaksi pertama; kode akan dibuat otomatis."
             }
           />
         ) : (
-          <div className="scroll">
-            <table>
+          <div className={isProcessLedger ? "process-ledger-wrap" : "scroll"}>
+            <table className={isProcessLedger ? "process-ledger-table" : ""}>
               <thead>
                 <tr>
-                  <th>KODE OTOMATIS</th>
+                  {isProcessLedger && <th>NO.</th>}
+                  <th>{active === "Order Produksi" ? "NOMOR PO" : active === "Cutting" ? "KODE CUTTING" : "KODE PROSES"}</th>
                   <th>TANGGAL</th>
-                  <th>SUMBER</th>
+                  <th>{active === "Order Produksi" ? "REFERENSI" : "REFERENSI PRODUKSI"}</th>
                   <th>MODEL</th>
-                  <th>RINCIAN</th>
+                  {(active === "Cutting" || active === "Sablon/Bordir") && <th>{active === "Cutting" ? "PIC CUTTING" : "PIC PROSES"}</th>}
+                  <th>WARNA & UKURAN</th>
                   <th>TOTAL</th>
                   <th>STATUS</th>
                   {active === "Bundle" && <th>AKSI</th>}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {(isProcessLedger ? pagedProcessTableRows : rows).map((r, rowIndex) => (
                   <tr key={r.id}>
-                    <td>
+                    {isProcessLedger && <td data-label="No.">{(safeProcessTablePage - 1) * processTablePageSize + rowIndex + 1}</td>}
+                    <td data-label={active === "Order Produksi" ? "Nomor PO" : "Kode Cutting"}>
                       <b>{r.id}</b>
                     </td>
-                    <td>{r.date}</td>
-                    <td>{r.sourceId || "Master Jaket"}</td>
-                    <td>
+                    <td data-label="Tanggal">{r.date}</td>
+                    <td data-label="Referensi Produksi">{active === "Order Produksi" ? "Master Jaket" : r.poId === r.id ? "Batch Cutting" : r.poId || "Batch Cutting"}</td>
+                    <td data-label="Model">
                       <b>{r.modelName}</b>
                       <small>{r.modelCode}</small>
                       {r.bundleId && (
                         <small>Bundle {shortBundleCode(r.bundleId)}</small>
                       )}
                     </td>
-                    <td>
-                      <small>
-                        {r.variants
+                    {(active === "Cutting" || active === "Sablon/Bordir") && <td data-label={active === "Cutting" ? "PIC Cutting" : "PIC Proses"}><b>{r.officer || "—"}</b></td>}
+                    <td data-label="Warna & Ukuran">
+                      <span className="process-variant-list">
+                        {r.variants.slice().sort((a, b) => a.color.localeCompare(b.color, "id") || compareSizes(a.size, b.size))
                           .map((v) => `${v.color} ${v.size}: ${v.qty}`)
-                          .join(" · ")}
-                      </small>
+                          .map((value) => <small key={value}>{value}</small>)}
+                      </span>
                     </td>
-                    <td>
+                    <td data-label="Total">
                       <b>{r.total}</b> unit
                     </td>
-                    <td>
-                      <span className="status">
-                        {r.remainingStatus || r.status}
+                    <td data-label="Status">
+                      <span className={`status ${active === "Cutting" ? cuttingWorkflowStatus(r, allRecords).tone : ""}`}>
+                        {active === "Cutting"
+                          ? cuttingWorkflowStatus(r, allRecords).label
+                          : r.remainingStatus || r.status}
                       </span>
                     </td>
                     {active === "Bundle" && (
@@ -6472,9 +8760,10 @@ function StagePage({
               </tbody>
             </table>
           </div>
-        )}
+        ))}
+        {!isModernProduction && isProcessLedger && processTableRows.length > 0 && <footer className="process-ledger-footer"><label>Tampilkan <select value={processTablePageSize} onChange={(e) => { setProcessTablePageSize(Number(e.target.value)); setProcessTablePage(1); }}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select> data</label><span>Menampilkan {(safeProcessTablePage - 1) * processTablePageSize + 1}–{Math.min(safeProcessTablePage * processTablePageSize, processTableRows.length)} dari {processTableRows.length}</span><div><button type="button" disabled={safeProcessTablePage <= 1} onClick={() => setProcessTablePage((page) => Math.max(1, page - 1))}>‹</button><b>{safeProcessTablePage}</b><button type="button" disabled={safeProcessTablePage >= processTablePageCount} onClick={() => setProcessTablePage((page) => Math.min(processTablePageCount, page + 1))}>›</button></div></footer>}
       </section>}
-    </>
+    </div>
   );
 }
 function Notes({
@@ -6497,12 +8786,6 @@ function Notes({
     },
     {
       no: "02",
-      title: "Kembali ke Gudang",
-      desc: "Vendor jahit → gudang",
-      match: (n: Note) => n.process === "Vendor Jahit → Gudang",
-    },
-    {
-      no: "03",
       title: "Kirim ke Quality Control",
       desc: "Gudang → Quality Control",
       match: (n: Note) => n.process === "Gudang → Quality Control",
@@ -6515,7 +8798,7 @@ function Notes({
           <p className="overline">DOKUMEN OTOMATIS</p>
           <h1>Dashboard Surat Jalan</h1>
           <span>
-            Tiga kelompok dokumen mengikuti urutan perpindahan produksi.
+            Surat jalan hanya dibuat saat barang dikirim ke vendor atau ke Quality Control.
           </span>
         </div>
       </div>
@@ -6639,40 +8922,618 @@ function NoteTable({
     </div>
   );
 }
-function Reports({ data }: { data: AppData }) {
+function Reports({ data, go, mode }: { data: AppData; go: (stage: string) => void; mode: "production" | "finance" }) {
+  const now = new Date(),
+    today = localDateString(now),
+    monthStart = `${today.slice(0, 8)}01`,
+    preferredFinancePICs = data.pics.filter((pic) => pic.active && /finance|keuangan/i.test(pic.role)),
+    financePICOptions = preferredFinancePICs.length > 0 ? preferredFinancePICs : data.pics.filter((pic) => pic.active),
+    requesterPICOptions = data.pics.filter((pic) => pic.active && !/finance|keuangan/i.test(pic.role));
+  const [financePeriod, setFinancePeriod] = useState<"today" | "week" | "month" | "custom" | "all">("month");
+  const [customStart, setCustomStart] = useState(monthStart);
+  const [customEnd, setCustomEnd] = useState(today);
+  const [reportTab, setReportTab] = useState<"payment" | "production" | "vendor">(mode === "finance" ? "payment" : "production");
+  const [showFinancePrint, setShowFinancePrint] = useState(false);
+  const [financeQuery, setFinanceQuery] = useState("");
+  const [financeKind, setFinanceKind] = useState<"all" | "Cutting" | "Vendor jahit" | "Sablon/Bordir" | "Quality Control">("all");
+  const [financePage, setFinancePage] = useState(1);
+  const [financePageSize, setFinancePageSize] = useState(10);
+  const [expandedFinanceRow, setExpandedFinanceRow] = useState<string | null>(null);
+  const [selectedFinanceWeeks, setSelectedFinanceWeeks] = useState<string[]>([]);
+  const [financeWeekScope, setFinanceWeekScope] = useState<"all" | "week" | "custom">("all");
+  const [financeWeekStart, setFinanceWeekStart] = useState(monthStart);
+  const [financeWeekEnd, setFinanceWeekEnd] = useState(today);
+  const [productionQuery, setProductionQuery] = useState("");
+  const [productionStatus, setProductionStatus] = useState<"all" | "active" | "done">("done");
+  const [productionPage, setProductionPage] = useState(1);
+  const [productionPageSize, setProductionPageSize] = useState(10);
+  const [selectedProductionPO, setSelectedProductionPO] = useState<string | null>(null);
+  const [vendorReportQuery, setVendorReportQuery] = useState("");
+  const [vendorReportStatus, setVendorReportStatus] = useState<"all" | "active" | "done">("done");
+  const [vendorReportPage, setVendorReportPage] = useState(1);
+  const [vendorReportPageSize, setVendorReportPageSize] = useState(10);
+  const [selectedVendorReport, setSelectedVendorReport] = useState<string | null>(null);
+  const [financePICCode, setFinancePICCode] = useState(
+    financePICOptions.find((pic) => /herdita/i.test(pic.name))?.code ?? financePICOptions[0]?.code ?? "",
+  );
+  const [requesterPICCode, setRequesterPICCode] = useState(
+    requesterPICOptions.find((pic) => /ceceng/i.test(pic.name))?.code ?? requesterPICOptions[0]?.code ?? "",
+  );
+  const week = mondaySaturday(now),
+    rangeStart = financePeriod === "today" ? today : financePeriod === "week" ? week.start : financePeriod === "month" ? monthStart : financePeriod === "custom" ? customStart : "",
+    rangeEnd = financePeriod === "today" ? today : financePeriod === "week" ? week.end : financePeriod === "month" ? today : financePeriod === "custom" ? customEnd : "",
+    inPeriod = (date: string) => financePeriod === "all" || (!!date && date >= rangeStart && date <= rangeEnd),
+    periodLabel = financePeriod === "all" ? "Semua waktu" : `${rangeStart} – ${rangeEnd}`,
+    allVendorReceipts = data.records["Penerimaan Gudang"] ?? [],
+    vendorReceipts = allVendorReceipts.filter((receipt) => inPeriod(receipt.date)),
+    vendorShipments = data.records["Pengiriman Vendor"] ?? [],
+    cuttingRows = (data.records.Cutting ?? []).filter((row) => inPeriod(row.date)),
+    decorationRows = (data.records["Sablon/Bordir"] ?? []).filter((row) => inPeriod(row.date)),
+    qcRows = (data.records["Quality Control"] ?? []).filter((row) => inPeriod(row.date)),
+    qcShipments = data.records["Pengiriman QC"] ?? [],
+    reportQCRate = (row: RecordRow) => {
+      if ((row.qcRate ?? 0) > 0) return row.qcRate ?? 0;
+      const shipment = qcShipments.find((item) => item.id === row.sourceId);
+      return data.qcLocations.find(
+        (location) =>
+          location.location === shipment?.destination ||
+          location.recipient === row.qcOfficer,
+      )?.rate ?? 0;
+    },
+    reportQCPayee = (row: RecordRow) => {
+      const shipment = qcShipments.find((item) => item.id === row.sourceId),
+        location = data.qcLocations.find(
+          (item) =>
+            item.location === shipment?.destination ||
+            item.recipient === row.qcOfficer,
+        );
+      return row.qcOfficer || location?.recipient || shipment?.destination || "Petugas QC belum dicatat";
+    },
+    vendorBill = vendorReceipts.reduce((total, receipt) => {
+      const shipment = vendorShipments.find((item) => item.id === receipt.sourceId),
+        rate = receipt.sewingRate ?? shipment?.sewingRate ?? 0;
+      return total + receipt.total * rate;
+    }, 0),
+    vendorPaid = vendorReceipts.reduce((total, receipt) => total + paidForReceipt(receipt), 0),
+    cuttingBill = cuttingRows.reduce((total, row) => total + row.total * (row.cuttingRate ?? 0), 0),
+    qcBill = qcRows.reduce((total, row) => total + row.total * reportQCRate(row), 0),
+    decorationBill = decorationRows.reduce((total, row) => total + row.total * (row.decorationRate ?? 0), 0),
+    cuttingPaid = cuttingRows.reduce((total, row) => total + paidForReceipt(row), 0) + allocatedWeeklyPaid(data.weeklyPayments, "cutting", new Set(cuttingRows.map((row) => row.id))),
+    qcPaid = allocatedWeeklyPaid(data.weeklyPayments, "qc", new Set(qcRows.map((row) => row.id))),
+    decorationPaid = decorationRows.reduce((total, row) => total + paidForReceipt(row), 0),
+    totalBill = vendorBill + cuttingBill + decorationBill + qcBill,
+    totalPaid = vendorPaid + cuttingPaid + decorationPaid + qcPaid,
+    totalRemaining = Math.max(0, totalBill - totalPaid),
+    financePIC = financePICOptions.find((pic) => pic.code === financePICCode) ?? financePICOptions[0],
+    financePhone = financePIC?.phone.replace(/\D/g, "").replace(/^0/, "62") ?? "",
+    vendorBatchIds = new Set(
+      data.weeklyPayments
+        .filter((payment) => payment.kind === "vendor")
+        .map((payment) => payment.id),
+    ),
+    decorationBatchIds = new Set(
+      data.weeklyPayments
+        .filter((payment) => payment.kind === "decoration")
+        .map((payment) => payment.id),
+    ),
+    paymentRows = [
+      ...data.weeklyPayments.map((payment) => ({ id: payment.id, date: payment.paymentDate, type: payment.kind === "cutting" ? "Cutting" : payment.kind === "qc" ? "QC" : payment.kind === "decoration" ? "Sablon/Bordir" : "Vendor jahit", payee: payment.payee, amount: payment.paymentAmount ?? payment.totalAmount, status: payment.voided ? "Dibatalkan" : "Tercatat" })),
+      ...cuttingRows.flatMap((row) => legacyPayment(row).map((payment) => ({ id: payment.id, date: payment.date, type: "Cutting (riwayat lama)", payee: row.officer || "Pelaksana Cutting", amount: payment.amount, status: payment.voided ? "Dibatalkan" : "Tercatat" }))),
+      ...vendorReceipts.flatMap((receipt) => legacyPayment(receipt).filter((payment) => !vendorBatchIds.has(payment.id)).map((payment) => {
+        const shipment = vendorShipments.find((item) => item.id === receipt.sourceId);
+        return { id: payment.id, date: payment.date, type: "Vendor jahit", payee: shipment?.destination || "Vendor", amount: payment.amount, status: payment.voided ? "Dibatalkan" : "Tercatat" };
+      })),
+      ...decorationRows.flatMap((row) => legacyPayment(row).filter((payment) => !decorationBatchIds.has(payment.id)).map((payment) => ({
+        id: payment.id,
+        date: payment.date,
+        type: "Sablon/Bordir",
+        payee: row.destination || "Vendor dekorasi",
+        amount: payment.amount,
+        status: payment.voided ? "Dibatalkan" : "Tercatat",
+      }))),
+    ].filter((payment) => inPeriod(payment.date)).sort((a, b) => b.date.localeCompare(a.date));
+  const requesterPIC = requesterPICOptions.find((pic) => pic.code === requesterPICCode),
+    transferMap = new Map<string, { type: string; payee: string; bankName: string; accountNumber: string; accountHolder: string; bill: number; paid: number }>();
+  const addTransfer = (type: string, payee: string, bill: number, paid: number, account?: { bankName?: string; accountNumber?: string; accountHolder?: string }) => {
+    const key = `${type}|${payee}`,
+      current = transferMap.get(key);
+    transferMap.set(key, {
+      type,
+      payee,
+      bankName: account?.bankName ?? current?.bankName ?? "",
+      accountNumber: account?.accountNumber ?? current?.accountNumber ?? "",
+      accountHolder: account?.accountHolder ?? current?.accountHolder ?? payee,
+      bill: (current?.bill ?? 0) + bill,
+      paid: (current?.paid ?? 0) + paid,
+    });
+  };
+  vendorReceipts.forEach((receipt) => {
+    const shipment = vendorShipments.find((item) => item.id === receipt.sourceId),
+      vendor = data.vendors.find((item) => item.name === shipment?.destination),
+      rate = receipt.sewingRate ?? shipment?.sewingRate ?? 0;
+    addTransfer("Vendor jahit", shipment?.destination || "Vendor", receipt.total * rate, paidForReceipt(receipt), vendor);
+  });
+  decorationRows.forEach((row) => {
+    const vendor = data.vendors.find((item) => item.name === row.destination);
+    addTransfer(
+      "Sablon/Bordir",
+      row.destination || "Vendor dekorasi",
+      row.total * (row.decorationRate ?? 0),
+      paidForReceipt(row),
+      vendor,
+    );
+  });
+  const groupedWork = (kind: "cutting" | "qc", rows: RecordRow[]) => {
+    const groups = new Map<string, { bill: number; account?: PIC | QCLocation }>();
+    rows.forEach((row) => {
+      const payee = kind === "cutting" ? row.officer || "Pelaksana Cutting" : reportQCPayee(row),
+        account = kind === "cutting" ? data.pics.find((pic) => pic.name === payee) : data.qcLocations.find((location) => location.recipient === payee),
+        rate = kind === "cutting" ? row.cuttingRate ?? 0 : reportQCRate(row),
+        current = groups.get(payee);
+      groups.set(payee, { bill: (current?.bill ?? 0) + row.total * rate, account: account ?? current?.account });
+    });
+    groups.forEach((value, payee) => {
+      const groupRows = rows.filter((row) => (kind === "cutting" ? row.officer || "Pelaksana Cutting" : reportQCPayee(row)) === payee),
+        paid = allocatedWeeklyPaid(data.weeklyPayments, kind, new Set(groupRows.map((row) => row.id))) + (kind === "cutting" ? groupRows.reduce((total, row) => total + paidForReceipt(row), 0) : 0);
+      addTransfer(kind === "cutting" ? "Cutting" : "Quality Control", payee, value.bill, paid, value.account);
+    });
+  };
+  groupedWork("cutting", cuttingRows);
+  groupedWork("qc", qcRows);
+  type FinanceWeekDraft = {
+    key: string;
+    type: "Cutting" | "Vendor jahit" | "Sablon/Bordir" | "Quality Control";
+    payee: string;
+    start: string;
+    end: string;
+    bill: number;
+    records: RecordRow[];
+  };
+  const weeklyTransferMap = new Map<string, FinanceWeekDraft>();
+  const addWeeklyTransfer = (
+    type: FinanceWeekDraft["type"],
+    payee: string,
+    row: RecordRow,
+    bill: number,
+  ) => {
+    const period = mondaySaturday(new Date(`${row.date}T12:00:00`)),
+      key = `${type}|${payee}|${period.start}`,
+      current = weeklyTransferMap.get(key);
+    weeklyTransferMap.set(key, {
+      key,
+      type,
+      payee,
+      start: period.start,
+      end: period.end,
+      bill: (current?.bill ?? 0) + bill,
+      records: [...(current?.records ?? []), row],
+    });
+  };
+  vendorReceipts.forEach((receipt) => {
+    const shipment = vendorShipments.find((item) => item.id === receipt.sourceId),
+      rate = receipt.sewingRate ?? shipment?.sewingRate ?? 0;
+    addWeeklyTransfer("Vendor jahit", shipment?.destination || "Vendor", receipt, receipt.total * rate);
+  });
+  decorationRows.forEach((row) =>
+    addWeeklyTransfer(
+      "Sablon/Bordir",
+      row.destination || "Vendor dekorasi",
+      row,
+      row.total * (row.decorationRate ?? 0),
+    ),
+  );
+  cuttingRows.forEach((row) =>
+    addWeeklyTransfer(
+      "Cutting",
+      row.officer || "Pelaksana Cutting",
+      row,
+      row.total * (row.cuttingRate ?? 0),
+    ),
+  );
+  qcRows.forEach((row) =>
+    addWeeklyTransfer(
+      "Quality Control",
+      reportQCPayee(row),
+      row,
+      row.total * reportQCRate(row),
+    ),
+  );
+  const financeWeeklyRows = [...weeklyTransferMap.values()]
+    .map((row) => {
+      const recordIds = new Set(row.records.map((record) => record.id)),
+        paid = row.type === "Vendor jahit" || row.type === "Sablon/Bordir"
+          ? row.records.reduce((total, record) => total + paidForReceipt(record), 0)
+          : allocatedWeeklyPaid(
+              data.weeklyPayments,
+              row.type === "Cutting" ? "cutting" : "qc",
+              recordIds,
+            ) + (row.type === "Cutting"
+              ? row.records.reduce((total, record) => total + paidForReceipt(record), 0)
+              : 0),
+        remaining = Math.max(0, row.bill - paid);
+      return {
+        ...row,
+        paid,
+        remaining,
+        status: row.bill <= 0 || paid <= 0 ? "Belum dibayar" : remaining > 0 ? "DP sebagian" : "Lunas",
+      };
+    })
+    .sort((a, b) => b.start.localeCompare(a.start));
+  const financeLedgerRows = [...transferMap.values()].map((row) => {
+      const remaining = Math.max(0, row.bill - row.paid);
+      return {
+        ...row,
+        remaining,
+        status: row.bill <= 0 || row.paid <= 0 ? "Belum dibayar" : remaining > 0 ? "DP sebagian" : "Lunas",
+        stage: row.type === "Cutting" ? "Cutting" : row.type === "Vendor jahit" ? "Penerimaan Gudang" : row.type === "Sablon/Bordir" ? "Sablon/Bordir" : "Quality Control",
+        weeks: financeWeeklyRows.filter((weekRow) => weekRow.type === row.type && weekRow.payee === row.payee),
+      };
+    }),
+    transferRows = financeLedgerRows.filter((row) => row.remaining > 0),
+    filteredFinanceRows = financeLedgerRows.filter((row) => {
+      const query = financeQuery.trim().toLowerCase(),
+        matchesKind = financeKind === "all" || row.type === financeKind,
+        matchesQuery = !query || [row.type, row.payee, row.bankName, row.accountNumber, row.accountHolder, row.status].join(" ").toLowerCase().includes(query);
+      return matchesKind && matchesQuery;
+    }),
+    financePageCount = Math.max(1, Math.ceil(filteredFinanceRows.length / financePageSize)),
+    safeFinancePage = Math.min(financePage, financePageCount),
+    pagedFinanceRows = filteredFinanceRows.slice((safeFinancePage - 1) * financePageSize, safeFinancePage * financePageSize);
+  const childrenOf = (stage: string, sourceId: string) => (data.records[stage] ?? []).filter((row) => row.sourceId === sourceId),
+    balanceAfter = (row: RecordRow, childStage: string) => sum(subtractVariants(row.variants, childrenOf(childStage, row.id).flatMap((child) => child.variants))),
+    belongsToPO = (row: RecordRow, po: RecordRow) => row.poId === po.id || row.id === po.id,
+    qcPassedVariants = (row: RecordRow) => (row.qcDetails ?? []).map((detail) => ({ color: detail.color, size: detail.size, qty: detail.passed })).filter((variant) => variant.qty > 0),
+    productionRoots = [
+      ...(data.records.Cutting ?? []).filter((row) => !row.sourceId),
+      ...(data.records["Order Produksi"] ?? []),
+    ],
+    productionRows = productionRoots.filter((po) => inPeriod(po.date)).map((po) => {
+      const cuttings = (data.records.Cutting ?? []).filter((row) => belongsToPO(row, po)),
+        bundles = (data.records.Bundle ?? []).filter((row) => belongsToPO(row, po)),
+        vendorSends = (data.records["Pengiriman Vendor"] ?? []).filter((row) => belongsToPO(row, po)),
+        receipts = (data.records["Penerimaan Gudang"] ?? []).filter((row) => belongsToPO(row, po)),
+        qcSends = (data.records["Pengiriman QC"] ?? []).filter((row) => belongsToPO(row, po)),
+        qcChecks = [...(data.records["Quality Control"] ?? []), ...(data.records["QC Ulang"] ?? [])].filter((row) => belongsToPO(row, po)),
+        reworks = (data.records.Rework ?? []).filter((row) => belongsToPO(row, po)),
+        reworkReceipts = (data.records["Penerimaan Rework"] ?? []).filter((row) => belongsToPO(row, po)),
+        stocks = (data.records["Stok Barang Jadi"] ?? []).filter((row) => belongsToPO(row, po)),
+        beforeCutting = po.stage === "Cutting" ? 0 : balanceAfter(po, "Cutting"),
+        cuttingArea = cuttings.reduce((total, row) => total + balanceAfter(row, "Bundle"), 0) + bundles.reduce((total, row) => total + balanceAfter(row, "Pengiriman Vendor"), 0),
+        atVendor = vendorSends.reduce((total, row) => total + balanceAfter(row, "Penerimaan Gudang"), 0),
+        beforeQC = receipts.reduce((total, row) => total + balanceAfter(row, "Pengiriman QC"), 0) + qcSends.reduce((total, row) => total + balanceAfter(row, "Quality Control"), 0),
+        readyStock = qcChecks.reduce((total, row) => total + sum(subtractVariants(qcPassedVariants(row), childrenOf("Stok Barang Jadi", row.id).flatMap((child) => child.variants))), 0),
+        repair = (data.records["Quality Control"] ?? []).filter((row) => belongsToPO(row, po)).reduce((total, row) => {
+          const repairVariants = (row.qcDetails ?? []).map((detail) => ({ color: detail.color, size: detail.size, qty: detail.repair })).filter((variant) => variant.qty > 0);
+          return total + sum(subtractVariants(repairVariants, childrenOf("Rework", row.id).flatMap((child) => child.variants)));
+        }, 0) + reworks.reduce((total, row) => total + balanceAfter(row, "Penerimaan Rework"), 0) + reworkReceipts.reduce((total, row) => total + balanceAfter(row, "QC Ulang"), 0) + (data.records["QC Ulang"] ?? []).filter((row) => belongsToPO(row, po)).reduce((total, row) => total + (row.qcRepair ?? 0), 0),
+        reject = qcChecks.reduce((total, row) => total + (row.qcReject ?? 0), 0),
+        stock = stocks.reduce((total, row) => total + row.total, 0),
+        activeUnits = Math.max(0, po.total - stock - reject),
+        finished = activeUnits === 0,
+        status = finished ? "Selesai" : atVendor > 0 ? "Sedang dijahit" : beforeQC > 0 ? "Menunggu QC" : repair > 0 ? "Repair" : readyStock > 0 ? "Siap masuk stok" : cuttingArea > 0 ? "Cutting & bundle" : beforeCutting > 0 ? "Belum cutting" : "Dalam proses",
+        vendors = [...new Set(vendorSends.map((row) => row.destination).filter(Boolean))].join(", ") || "—";
+      return { po, beforeCutting, cuttingArea, atVendor, beforeQC, readyStock, repair, reject, stock, activeUnits, finished, status, vendors };
+    }),
+    filteredProductionRows = productionRows.filter((row) => {
+      const query = productionQuery.trim().toLowerCase(),
+        matchesQuery = !query || [row.po.id, row.po.modelName, row.po.modelCode, row.vendors, row.status].join(" ").toLowerCase().includes(query),
+        matchesStatus = productionStatus === "all" || (productionStatus === "done" ? row.finished : !row.finished);
+      return matchesQuery && matchesStatus;
+    }),
+    productionPageCount = Math.max(1, Math.ceil(filteredProductionRows.length / productionPageSize)),
+    safeProductionPage = Math.min(productionPage, productionPageCount),
+    pagedProductionRows = filteredProductionRows.slice((safeProductionPage - 1) * productionPageSize, safeProductionPage * productionPageSize),
+    selectedProduction = productionRows.find((row) => row.po.id === selectedProductionPO);
+  const vendorReportMap = new Map<string, { key: string; vendor: string; poId: string; modelName: string; modelCode: string; shipments: RecordRow[]; receipts: RecordRow[] }>();
+  (data.records["Pengiriman Vendor"] ?? []).filter((shipment) => inPeriod(shipment.date)).forEach((shipment) => {
+    const vendor = shipment.destination || "Vendor belum dicatat",
+      poId = shipment.poId || "Referensi Cutting tidak ditemukan",
+      key = `${vendor}|${poId}|${shipment.modelCode}`,
+      current = vendorReportMap.get(key),
+      receipts = (data.records["Penerimaan Gudang"] ?? []).filter((receipt) => receipt.sourceId === shipment.id);
+    vendorReportMap.set(key, {
+      key,
+      vendor,
+      poId,
+      modelName: shipment.modelName,
+      modelCode: shipment.modelCode,
+      shipments: [...(current?.shipments ?? []), shipment],
+      receipts: [...(current?.receipts ?? []), ...receipts],
+    });
+  });
+  const vendorReportRows = [...vendorReportMap.values()].map((group) => {
+      const sentVariants = mergeVariants(group.shipments),
+        receivedVariants = mergeVariants(group.receipts),
+        remainingVariants = subtractVariants(sentVariants, receivedVariants),
+        sent = sum(sentVariants),
+        received = sum(receivedVariants),
+        remaining = sum(remainingVariants),
+        bundleIds = [...new Set(group.shipments.map((shipment) => shipment.bundleId || shipment.sourceId).filter(Boolean))],
+        firstSent = [...group.shipments].sort((a, b) => a.date.localeCompare(b.date))[0]?.date || today,
+        lastReceipt = [...group.receipts].sort((a, b) => b.date.localeCompare(a.date))[0]?.date || "—",
+        duration = Math.max(0, Math.floor((new Date(`${today}T12:00:00`).getTime() - new Date(`${firstSent}T12:00:00`).getTime()) / 86400000)),
+        status = remaining <= 0 ? "Selesai" : received > 0 ? "Setoran sebagian" : "Sedang dijahit";
+      return { ...group, sent, received, remaining, remainingVariants, bundleIds, firstSent, lastReceipt, duration, status, finished: remaining <= 0 };
+    }),
+    filteredVendorReportRows = vendorReportRows.filter((row) => {
+      const query = vendorReportQuery.trim().toLowerCase(),
+        matchesQuery = !query || [row.vendor, row.poId, row.modelName, row.modelCode, row.bundleIds.join(" "), row.status].join(" ").toLowerCase().includes(query),
+        matchesStatus = vendorReportStatus === "all" || (vendorReportStatus === "done" ? row.finished : !row.finished);
+      return matchesQuery && matchesStatus;
+    }),
+    vendorReportPageCount = Math.max(1, Math.ceil(filteredVendorReportRows.length / vendorReportPageSize)),
+    safeVendorReportPage = Math.min(vendorReportPage, vendorReportPageCount),
+    pagedVendorReportRows = filteredVendorReportRows.slice((safeVendorReportPage - 1) * vendorReportPageSize, safeVendorReportPage * vendorReportPageSize),
+    selectedVendorReportRow = vendorReportRows.find((row) => row.key === selectedVendorReport);
+  const whatsappURL = (message: string) => `https://wa.me/${financePhone}?text=${encodeURIComponent(message)}`,
+    summaryReminder = [
+      `Halo ${financePIC?.name || "Finance"}, berikut pengingat pembayaran produksi Oims.`,
+      `Pengaju: ${requesterPIC?.name || "PIC Produksi"}`,
+      `Periode: ${periodLabel}`,
+      "",
+      `Cutting — tagihan ${rupiah(cuttingBill)}, dibayar ${rupiah(cuttingPaid)}, sisa ${rupiah(Math.max(0, cuttingBill - cuttingPaid))}`,
+      `Vendor jahit — tagihan ${rupiah(vendorBill)}, dibayar ${rupiah(vendorPaid)}, sisa ${rupiah(Math.max(0, vendorBill - vendorPaid))}`,
+      `Sablon/Bordir — tagihan ${rupiah(decorationBill)}, dibayar ${rupiah(decorationPaid)}, sisa ${rupiah(Math.max(0, decorationBill - decorationPaid))}`,
+      `Quality Control — tagihan ${rupiah(qcBill)}, dibayar ${rupiah(qcPaid)}, sisa ${rupiah(Math.max(0, qcBill - qcPaid))}`,
+      "",
+      `Total tagihan: ${rupiah(totalBill)}`,
+      `Sudah dibayar: ${rupiah(totalPaid)}`,
+      `Total sisa: ${rupiah(totalRemaining)}`,
+      "",
+      "Daftar transfer:",
+      ...transferRows.map((row, index) => `${index + 1}. ${row.payee} (${row.type}) — ${row.bankName && row.accountNumber ? `${row.bankName} ${row.accountNumber} a.n. ${row.accountHolder}` : "rekening belum diisi"} — ${rupiah(row.remaining)}`),
+      "Mohon diperiksa dan ditindaklanjuti. Pesan ini disiapkan otomatis oleh Oims.",
+    ].join("\n");
+  const toggleFinanceWeek = (key: string) =>
+    setSelectedFinanceWeeks((selected) =>
+      selected.includes(key)
+        ? selected.filter((item) => item !== key)
+        : [...selected, key],
+    );
+  const selectedReminder = (
+    item: (typeof financeLedgerRows)[number],
+    weeks: (typeof financeWeeklyRows),
+  ) => {
+    const totalBillSelected = weeks.reduce((total, weekRow) => total + weekRow.bill, 0),
+      totalPaidSelected = weeks.reduce((total, weekRow) => total + weekRow.paid, 0),
+      totalRemainingSelected = weeks.reduce((total, weekRow) => total + weekRow.remaining, 0),
+      weekDetails = weeks.flatMap((weekRow, weekIndex) => {
+        const poMap = new Map<string, { poId: string; modelName: string; units: number; amount: number }>();
+        weekRow.records.forEach((record) => {
+          const shipment = vendorShipments.find((candidate) => candidate.id === record.sourceId),
+            rate = item.type === "Cutting"
+              ? record.cuttingRate ?? 0
+              : item.type === "Vendor jahit"
+                ? record.sewingRate ?? shipment?.sewingRate ?? 0
+                : item.type === "Sablon/Bordir"
+                  ? record.decorationRate ?? 0
+                : reportQCRate(record),
+            poId = record.poId || "Referensi Cutting belum tercatat",
+            key = `${poId}|${record.modelName}`,
+            current = poMap.get(key);
+          poMap.set(key, {
+            poId,
+            modelName: record.modelName,
+            units: (current?.units ?? 0) + record.total,
+            amount: (current?.amount ?? 0) + record.total * rate,
+          });
+        });
+        return [
+          `${weekIndex + 1}. Periode ${weekRow.start} – ${weekRow.end}`,
+          ...[...poMap.values()].map(
+            (poLine) =>
+              `   - ${poLine.poId} — ${poLine.modelName}: ${poLine.units} unit, tagihan ${rupiah(poLine.amount)}`,
+          ),
+          `   Dibayar ${rupiah(weekRow.paid)} · Sisa ${rupiah(weekRow.remaining)}`,
+        ];
+      });
+    return [
+      `Halo ${financePIC?.name || "Finance"}, ada pengajuan pembayaran produksi Oims yang perlu ditindaklanjuti.`,
+      `Pengaju: ${requesterPIC?.name || "PIC Produksi"}`,
+      `Proses: ${item.type}`,
+      `Penerima: ${item.payee}`,
+      "",
+      "Rincian minggu yang dipilih:",
+      ...weekDetails,
+      "",
+      `Total tagihan terpilih: ${rupiah(totalBillSelected)}`,
+      `Sudah dibayar: ${rupiah(totalPaidSelected)}`,
+      `Total yang diajukan: ${rupiah(totalRemainingSelected)}`,
+      "",
+      "Tujuan transfer:",
+      `Bank: ${item.bankName || "Belum dilengkapi"}`,
+      `Nomor rekening: ${item.accountNumber || "Belum dilengkapi"}`,
+      `Penerima rekening: ${item.accountHolder || item.payee || "Belum dilengkapi"}`,
+      "Mohon diperiksa. Pesan ini belum dikirim otomatis.",
+    ].join("\n");
+  };
+  function exportFinanceCSV() {
+    const csvRows: Array<Array<string | number>> = [
+      ["LAPORAN PEMBAYARAN OIMS"],
+      ["Periode", periodLabel],
+      [],
+      ["RINGKASAN", "Tagihan", "Dibayar", "Sisa"],
+      ["Cutting", cuttingBill, cuttingPaid, Math.max(0, cuttingBill - cuttingPaid)],
+      ["Vendor jahit", vendorBill, vendorPaid, Math.max(0, vendorBill - vendorPaid)],
+      ["Sablon/Bordir", decorationBill, decorationPaid, Math.max(0, decorationBill - decorationPaid)],
+      ["Quality Control", qcBill, qcPaid, Math.max(0, qcBill - qcPaid)],
+      ["TOTAL", totalBill, totalPaid, totalRemaining],
+      [],
+      ["DAFTAR TUJUAN TRANSFER"],
+      ["Jenis", "Penerima", "Bank", "Nomor rekening", "Atas nama", "Nominal transfer"],
+      ...transferRows.map((row) => [row.type, row.payee, row.bankName || "Belum diisi", row.accountNumber || "Belum diisi", row.accountHolder || row.payee, row.remaining]),
+      [],
+      ["RIWAYAT PEMBAYARAN"],
+      ["Tanggal", "Nomor bukti", "Jenis", "Penerima", "Nominal", "Status"],
+      ...paymentRows.map((payment) => [payment.date, payment.id, payment.type, payment.payee, payment.amount, payment.status]),
+    ];
+    const content = `\uFEFF${csvRows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(";")).join("\n")}`,
+      url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" })),
+      link = document.createElement("a");
+    link.href = url;
+    link.download = `laporan-pembayaran-oims-${rangeStart || "semua"}-${rangeEnd || "waktu"}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
   return (
     <>
       <div className="page-title">
         <div>
-          <p className="overline">REKONSILIASI</p>
-          <h1>Laporan Produksi</h1>
-          <span>Rekap berdasarkan hubungan PO dan transaksi turunannya.</span>
+          <p className="overline">{mode === "finance" ? "KEUANGAN" : "ANALITIK PRODUKSI"}</p>
+          <h1>{mode === "finance" ? "Laporan Keuangan" : "Laporan Produksi"}</h1>
+          <span>{mode === "finance" ? "Tagihan dan pembayaran setiap pekerjaan produksi." : "Riwayat pekerjaan, progres vendor, dan hasil produksi selesai."}</span>
+        </div>
+        <div className="finance-report-actions">
+          <select value={financePeriod} onChange={(e) => setFinancePeriod(e.target.value as "today" | "week" | "month" | "custom" | "all")}>
+            <option value="today">Hari ini</option><option value="week">Minggu ini</option><option value="month">Bulan ini</option><option value="custom">Custom tanggal</option><option value="all">Semua waktu</option>
+          </select>
+          {financePeriod === "custom" && <span className="finance-custom-range"><input aria-label="Tanggal mulai laporan" type="date" value={customStart} max={customEnd} onChange={(e) => setCustomStart(e.target.value)} /><i>–</i><input aria-label="Tanggal selesai laporan" type="date" value={customEnd} min={customStart} onChange={(e) => setCustomEnd(e.target.value)} /></span>}
+          {reportTab === "payment" && <><button type="button" onClick={() => setShowFinancePrint(true)}>Cetak</button><button type="button" onClick={exportFinanceCSV}>Ekspor CSV</button></>}
         </div>
       </div>
-      <div className="report-grid">
-        {data.records["Order Produksi"]?.length ? (
-          <>
-            {data.records["Order Produksi"].map((po) => (
-              <article key={po.id}>
-                <i>◇</i>
-                <h3>{po.id}</h3>
-                <p>
-                  {po.modelName} · {po.total} unit
-                </p>
-                <button>Telusuri seluruh proses →</button>
-              </article>
-            ))}
-          </>
-        ) : (
-          <article>
-            <i>▥</i>
-            <h3>Belum ada PO</h3>
-            <p>Laporan akan tersedia setelah PO produksi dibuat.</p>
-          </article>
-        )}
-      </div>
+      <p className="finance-period-caption">Periode laporan: <b>{periodLabel}</b></p>
+      {reportTab === "payment" && <section className="finance-reminder-bar">
+        <div><small>PENGINGAT FINANCE</small><b>Kirim manual melalui WhatsApp</b><span>Pesan hanya disiapkan. Pegawai tetap memeriksa lalu menekan tombol kirim di WhatsApp.</span></div>
+        <label><span>PIC pengaju</span><select value={requesterPICCode} onChange={(e) => setRequesterPICCode(e.target.value)}><option value="">Pilih PIC pengaju</option>{requesterPICOptions.map((pic) => <option key={pic.code} value={pic.code}>{pic.name} · {pic.role}</option>)}</select></label>
+        <label><span>PIC penerima Finance</span><select value={financePICCode} onChange={(e) => setFinancePICCode(e.target.value)}><option value="">Pilih PIC Finance</option>{financePICOptions.map((pic) => <option key={pic.code} value={pic.code}>{pic.name} · {pic.role}</option>)}</select></label>
+        {financePhone ? <a href={whatsappURL(summaryReminder)} target="_blank" rel="noreferrer">Kirim ringkasan WA</a> : <button type="button" disabled>Nomor PIC belum tersedia</button>}
+      </section>}
+      {mode === "production" && <div className="report-tabs" role="tablist" aria-label="Jenis laporan produksi">
+        <button className={reportTab === "production" ? "active" : ""} onClick={() => setReportTab("production")}>Pekerjaan Produksi</button>
+        <button className={reportTab === "vendor" ? "active" : ""} onClick={() => setReportTab("vendor")}>Pekerjaan Vendor</button>
+      </div>}
+      {reportTab === "payment" && <>
+      <section className="finance-summary">
+        <article><span>Total tagihan produksi</span><b>{rupiah(totalBill)}</b></article>
+        <article><span>Sudah dibayar</span><b>{rupiah(totalPaid)}</b></article>
+        <article className="outstanding"><span>Sisa pembayaran</span><b>{rupiah(totalRemaining)}</b></article>
+      </section>
+      <section className="finance-ledger-panel">
+        <header>
+          <div><small>REKAP PEMBAYARAN</small><h2>Daftar tagihan produksi</h2><p>Tagihan Cutting, vendor jahit, Sablon/Bordir, dan QC dalam satu tabel.</p></div>
+          <b>{filteredFinanceRows.length} data</b>
+        </header>
+        <div className="finance-ledger-tools">
+          <label className="finance-ledger-search"><span>⌕</span><input value={financeQuery} onChange={(e) => { setFinanceQuery(e.target.value); setFinancePage(1); }} placeholder="Cari penerima, rekening, atau status..." /></label>
+          <select value={financeKind} onChange={(e) => { setFinanceKind(e.target.value as typeof financeKind); setFinancePage(1); }}><option value="all">Semua proses</option><option value="Cutting">Cutting</option><option value="Vendor jahit">Vendor jahit</option><option value="Sablon/Bordir">Sablon/Bordir</option><option value="Quality Control">Quality Control</option></select>
+        </div>
+        {filteredFinanceRows.length === 0 ? <div className="finance-transfer-empty"><b>Belum ada data yang sesuai</b><span>Ubah pencarian, filter, atau periode laporan.</span></div> : <>
+          <div className="finance-ledger-table-wrap"><table className="finance-ledger-table"><thead><tr><th>No.</th><th>Jenis</th><th>Penerima</th><th>Periode</th><th>Tagihan</th><th>Dibayar</th><th>Sisa</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{pagedFinanceRows.map((row, index) => {
+            const rowKey = `${row.type}|${row.payee}`,
+              isExpanded = expandedFinanceRow === rowKey,
+              visibleWeeks = row.weeks.filter((weekRow) => {
+                if (financeWeekScope === "all") return true;
+                const start = financeWeekScope === "week" ? week.start : financeWeekStart,
+                  end = financeWeekScope === "week" ? week.end : financeWeekEnd;
+                return !!start && !!end && weekRow.end >= start && weekRow.start <= end;
+              }),
+              outstandingWeeks = visibleWeeks.filter((weekRow) => weekRow.remaining > 0),
+              selectedWeeks = visibleWeeks.filter((weekRow) => selectedFinanceWeeks.includes(weekRow.key)),
+              allOutstandingSelected = outstandingWeeks.length > 0 && outstandingWeeks.every((weekRow) => selectedFinanceWeeks.includes(weekRow.key));
+            return <Fragment key={rowKey}>
+              <tr className={isExpanded ? "finance-parent-row expanded" : "finance-parent-row"}>
+                <td data-label="No.">{(safeFinancePage - 1) * financePageSize + index + 1}</td>
+                <td data-label="Jenis"><b className="finance-kind">{row.type}</b></td>
+                <td data-label="Penerima"><span className="finance-payee-cell"><b>{row.payee}</b><small>{row.bankName && row.accountNumber ? `${row.bankName} · ${row.accountNumber} · a.n. ${row.accountHolder || row.payee}` : "Rekening belum dilengkapi"}</small></span></td>
+                <td data-label="Periode">{row.weeks.length} minggu</td><td data-label="Tagihan"><b>{rupiah(row.bill)}</b></td><td data-label="Dibayar">{rupiah(row.paid)}</td><td data-label="Sisa"><strong>{rupiah(row.remaining)}</strong></td>
+                <td data-label="Status"><span className={`finance-status ${row.status === "Lunas" ? "paid" : row.status === "DP sebagian" ? "partial" : "unpaid"}`}>{row.status}</span></td>
+                <td data-label="Aksi"><span className="finance-row-actions"><button type="button" onClick={() => setExpandedFinanceRow(isExpanded ? null : rowKey)}>{isExpanded ? "Tutup" : "Mingguan"}</button><button type="button" onClick={() => go(row.stage)} title="Buka pembayaran">Bayar</button></span></td>
+              </tr>
+              {isExpanded && <tr className="finance-week-detail-row"><td colSpan={9}>
+                <div className="finance-week-detail">
+                  <header><div><b>Tagihan mingguan · {row.payee}</b><span>Centang minggu yang akan diajukan ke Finance.</span></div><div className="finance-week-filters"><select aria-label="Periode rincian mingguan" value={financeWeekScope} onChange={(event) => setFinanceWeekScope(event.target.value as typeof financeWeekScope)}><option value="all">Semua minggu</option><option value="week">Minggu ini</option><option value="custom">Custom tanggal</option></select>{financeWeekScope === "custom" && <span><input aria-label="Tanggal mulai tagihan mingguan" type="date" value={financeWeekStart} max={financeWeekEnd} onChange={(event) => setFinanceWeekStart(event.target.value)} /><i>–</i><input aria-label="Tanggal selesai tagihan mingguan" type="date" value={financeWeekEnd} min={financeWeekStart} onChange={(event) => setFinanceWeekEnd(event.target.value)} /></span>}<button type="button" disabled={outstandingWeeks.length === 0} onClick={() => {
+                    const outstandingKeys = outstandingWeeks.map((weekRow) => weekRow.key);
+                    setSelectedFinanceWeeks((selected) => allOutstandingSelected
+                      ? selected.filter((key) => !outstandingKeys.includes(key))
+                      : [...new Set([...selected, ...outstandingKeys])]);
+                  }}>{allOutstandingSelected ? "Batalkan semua" : "Pilih semua tunggakan"}</button></div></header>
+                  <div className="finance-week-list">
+                    {visibleWeeks.length === 0 ? <p className="finance-week-empty">Tidak ada tagihan pada tanggal yang dipilih.</p> : visibleWeeks.map((weekRow) => <label key={weekRow.key} className={weekRow.remaining <= 0 ? "paid" : ""}>
+                      <input type="checkbox" disabled={weekRow.remaining <= 0} checked={selectedFinanceWeeks.includes(weekRow.key)} onChange={() => toggleFinanceWeek(weekRow.key)} />
+                      <span><b>{weekRow.start} – {weekRow.end}</b><small>{weekRow.records.length} transaksi</small></span>
+                      <p><small>Tagihan</small><b>{rupiah(weekRow.bill)}</b></p>
+                      <p><small>Dibayar</small><b>{rupiah(weekRow.paid)}</b></p>
+                      <p><small>Sisa</small><strong>{rupiah(weekRow.remaining)}</strong></p>
+                      <em className={`finance-status ${weekRow.status === "Lunas" ? "paid" : weekRow.status === "DP sebagian" ? "partial" : "unpaid"}`}>{weekRow.status}</em>
+                    </label>)}
+                  </div>
+                  <footer><span>{selectedWeeks.length > 0 ? `${selectedWeeks.length} minggu dipilih · total ${rupiah(selectedWeeks.reduce((total, weekRow) => total + weekRow.remaining, 0))}` : "Belum ada minggu yang dipilih"}</span>{financePhone && selectedWeeks.length > 0 ? <a href={whatsappURL(selectedReminder(row, selectedWeeks))} target="_blank" rel="noreferrer">WA minggu terpilih</a> : <button type="button" disabled>WA minggu terpilih</button>}</footer>
+                </div>
+              </td></tr>}
+            </Fragment>;
+          })}</tbody></table></div>
+          <footer className="finance-ledger-footer"><label>Tampilkan <select value={financePageSize} onChange={(e) => { setFinancePageSize(Number(e.target.value)); setFinancePage(1); }}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select> data</label><span>Menampilkan {(safeFinancePage - 1) * financePageSize + 1}–{Math.min(safeFinancePage * financePageSize, filteredFinanceRows.length)} dari {filteredFinanceRows.length}</span><div><button type="button" disabled={safeFinancePage <= 1} onClick={() => setFinancePage((page) => Math.max(1, page - 1))}>‹</button><b>{safeFinancePage}</b><button type="button" disabled={safeFinancePage >= financePageCount} onClick={() => setFinancePage((page) => Math.min(financePageCount, page + 1))}>›</button></div></footer>
+        </>}
+      </section>
+      <details className="finance-payment-history">
+        <summary><span><small>RIWAYAT PEMBAYARAN</small><b>Transaksi keuangan</b></span><em>{paymentRows.length} pembayaran · buka rincian</em></summary>
+        {paymentRows.length === 0 ? <Empty title="Belum ada pembayaran" text="Pembayaran pada periode terpilih akan tampil di sini." /> : <div className="scroll"><table><thead><tr><th>NO.</th><th>TANGGAL</th><th>NOMOR BUKTI</th><th>JENIS</th><th>PENERIMA</th><th>NOMINAL</th><th>STATUS</th></tr></thead><tbody>{paymentRows.map((payment, index) => <tr key={payment.id}><td>{index + 1}</td><td>{payment.date}</td><td><b>{payment.id}</b></td><td>{payment.type}</td><td>{payment.payee}</td><td><b>{rupiah(payment.amount)}</b></td><td><span className="status">{payment.status}</span></td></tr>)}</tbody></table></div>}
+      </details>
+      </>}
+      {reportTab === "production" && <>
+      <section className="production-report-summary">
+        <article><span>Batch dalam periode</span><b>{productionRows.length}</b><small>referensi produksi</small></article>
+        <article><span>Total hasil Cutting</span><b>{productionRows.reduce((total, row) => total + row.po.total, 0)}</b><small>unit aktual dipotong</small></article>
+        <article><span>Masih proses</span><b>{productionRows.reduce((total, row) => total + row.activeUnits, 0)}</b><small>belum stok/reject</small></article>
+        <article><span>Stok jadi</span><b>{productionRows.reduce((total, row) => total + row.stock, 0)}</b><small>unit selesai</small></article>
+        <article className="reject"><span>Reject</span><b>{productionRows.reduce((total, row) => total + row.reject, 0)}</b><small>unit gagal QC</small></article>
+      </section>
+      <section className="production-ledger-panel">
+        <header><div><small>REKAP PRODUKSI</small><h2>Posisi unit per Batch Cutting</h2><p>Setiap unit dihitung satu kali berdasarkan posisi fisik terakhir.</p></div><b>{filteredProductionRows.length} batch</b></header>
+        <div className="production-ledger-tools"><label><span>⌕</span><input value={productionQuery} onChange={(e) => { setProductionQuery(e.target.value); setProductionPage(1); }} placeholder="Cari batch Cutting, model, atau vendor..." /></label><select value={productionStatus} onChange={(e) => { setProductionStatus(e.target.value as typeof productionStatus); setProductionPage(1); }}><option value="all">Semua status</option><option value="active">Masih aktif</option><option value="done">Selesai</option></select></div>
+        {filteredProductionRows.length === 0 ? <Empty title="Belum ada Batch Cutting yang sesuai" text="Ubah pencarian, status, atau periode laporan." /> : <>
+          <div className="production-ledger-table-wrap"><table className="production-ledger-table"><thead><tr><th>No.</th><th>Batch Cutting / Model</th><th>Vendor</th><th>Total Cutting</th><th>Belum Cutting</th><th>Cutting / Bundle</th><th>Di Vendor</th><th>Belum QC</th><th>Siap Stok</th><th>Repair</th><th>Reject</th><th>Stok Jadi</th><th>Sisa Proses</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{pagedProductionRows.map((row, index) => <tr key={row.po.id}>
+            <td data-label="No.">{(safeProductionPage - 1) * productionPageSize + index + 1}</td>
+            <td data-label="Batch / Model"><span className="production-po-cell"><b>{row.po.id}</b><small>{row.po.modelName} · {row.po.modelCode}</small></span></td>
+            <td data-label="Vendor">{row.vendors}</td><td data-label="Total Cutting"><b>{row.po.total}</b></td><td data-label="Belum Cutting">{row.beforeCutting}</td><td data-label="Cutting / Bundle">{row.cuttingArea}</td><td data-label="Di Vendor">{row.atVendor}</td><td data-label="Belum QC">{row.beforeQC}</td><td data-label="Siap Stok">{row.readyStock}</td><td data-label="Repair">{row.repair}</td><td data-label="Reject"><strong className="production-reject-value">{row.reject}</strong></td><td data-label="Stok Jadi"><strong className="production-stock-value">{row.stock}</strong></td><td data-label="Sisa Proses"><b>{row.activeUnits}</b></td>
+            <td data-label="Status"><span className={`production-status ${row.finished ? "done" : row.status === "Repair" ? "repair" : "active"}`}>{row.status}</span></td><td data-label="Aksi"><button type="button" onClick={() => setSelectedProductionPO(row.po.id)}>Rincian</button></td>
+          </tr>)}</tbody></table></div>
+          <footer className="production-ledger-footer"><label>Tampilkan <select value={productionPageSize} onChange={(e) => { setProductionPageSize(Number(e.target.value)); setProductionPage(1); }}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select> batch</label><span>Menampilkan {(safeProductionPage - 1) * productionPageSize + 1}–{Math.min(safeProductionPage * productionPageSize, filteredProductionRows.length)} dari {filteredProductionRows.length}</span><div><button type="button" disabled={safeProductionPage <= 1} onClick={() => setProductionPage((page) => Math.max(1, page - 1))}>‹</button><b>{safeProductionPage}</b><button type="button" disabled={safeProductionPage >= productionPageCount} onClick={() => setProductionPage((page) => Math.min(productionPageCount, page + 1))}>›</button></div></footer>
+        </>}
+      </section>
+      {selectedProduction && <div className="owner-drawer-backdrop" onClick={() => setSelectedProductionPO(null)}><aside className="owner-drawer production-report-drawer" onClick={(e) => e.stopPropagation()}><header><div><p className="overline">RINCIAN PRODUKSI</p><h2>{selectedProduction.po.id}</h2><span>{selectedProduction.po.modelName} · {selectedProduction.po.total} unit</span></div><button aria-label="Tutup rincian" onClick={() => setSelectedProductionPO(null)}>×</button></header><div className="production-detail-totals">{[["Belum Cutting", selectedProduction.beforeCutting], ["Cutting / Bundle", selectedProduction.cuttingArea], ["Di Vendor", selectedProduction.atVendor], ["Belum QC", selectedProduction.beforeQC], ["Siap Stok", selectedProduction.readyStock], ["Repair", selectedProduction.repair], ["Reject", selectedProduction.reject], ["Stok Jadi", selectedProduction.stock]].map(([label, value]) => <p key={String(label)}><span>{label}</span><b>{value} unit</b></p>)}</div><div className="production-detail-variants"><h3>Rincian rencana warna & ukuran</h3>{selectedProduction.po.variants.map((variant) => <p key={`${variant.color}-${variant.size}`}><span>{variant.color}</span><b>{variant.size}</b><strong>{variant.qty} unit</strong></p>)}</div><footer><span>Status saat ini</span><b>{selectedProduction.status}</b></footer></aside></div>}
+      </>}
+      {reportTab === "vendor" && <>
+      <section className="vendor-report-summary">
+        <article><span>Vendor aktif</span><b>{new Set(vendorReportRows.filter((row) => !row.finished).map((row) => row.vendor)).size}</b><small>sedang mengerjakan</small></article>
+        <article><span>Total dikirim</span><b>{vendorReportRows.reduce((total, row) => total + row.sent, 0)}</b><small>unit ke vendor</small></article>
+        <article><span>Sudah disetor</span><b>{vendorReportRows.reduce((total, row) => total + row.received, 0)}</b><small>unit diterima gudang</small></article>
+        <article className="wip"><span>Masih dijahit</span><b>{vendorReportRows.reduce((total, row) => total + row.remaining, 0)}</b><small>unit WIP vendor</small></article>
+      </section>
+      <section className="vendor-report-panel">
+        <header><div><small>MONITORING VENDOR</small><h2>Progres jahit per vendor dan Batch Cutting</h2><p>Setoran parsial otomatis mengurangi jumlah yang masih dijahit.</p></div><b>{filteredVendorReportRows.length} pekerjaan</b></header>
+        <div className="vendor-report-tools"><label><span>⌕</span><input value={vendorReportQuery} onChange={(e) => { setVendorReportQuery(e.target.value as string); setVendorReportPage(1); }} placeholder="Cari vendor, Batch Cutting, model, atau bundle..." /></label><select value={vendorReportStatus} onChange={(e) => { setVendorReportStatus(e.target.value as typeof vendorReportStatus); setVendorReportPage(1); }}><option value="all">Semua status</option><option value="active">Masih dikerjakan</option><option value="done">Selesai</option></select></div>
+        {filteredVendorReportRows.length === 0 ? <Empty title="Belum ada pekerjaan vendor" text="Ubah pencarian, status, atau periode laporan." /> : <>
+          <div className="vendor-report-table-wrap"><table className="vendor-report-table"><thead><tr><th>No.</th><th>Vendor</th><th>Batch / Model</th><th>Bundle</th><th>Dikirim</th><th>Sudah Setor</th><th>Masih Dijahit</th><th>Kirim Pertama</th><th>Setoran Terakhir</th><th>Lama Proses</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{pagedVendorReportRows.map((row, index) => <tr key={row.key}>
+            <td data-label="No.">{(safeVendorReportPage - 1) * vendorReportPageSize + index + 1}</td><td data-label="Vendor"><b>{row.vendor}</b></td><td data-label="Batch / Model"><span className="vendor-report-model"><b>{row.poId}</b><small>{row.modelName} · {row.modelCode}</small></span></td><td data-label="Bundle"><span className="vendor-bundle-count"><b>{row.bundleIds.length}</b><small>{row.bundleIds.slice(0, 2).join(", ")}{row.bundleIds.length > 2 ? "…" : ""}</small></span></td><td data-label="Dikirim"><b>{row.sent}</b></td><td data-label="Sudah Setor"><strong className="vendor-received-value">{row.received}</strong></td><td data-label="Masih Dijahit"><strong className="vendor-wip-value">{row.remaining}</strong></td><td data-label="Kirim Pertama">{row.firstSent}</td><td data-label="Setoran Terakhir">{row.lastReceipt}</td><td data-label="Lama Proses">{row.finished ? "Selesai" : `${row.duration} hari`}</td><td data-label="Status"><span className={`vendor-report-status ${row.finished ? "done" : row.received > 0 ? "partial" : "active"}`}>{row.status}</span></td><td data-label="Aksi"><button type="button" onClick={() => setSelectedVendorReport(row.key)}>Rincian</button></td>
+          </tr>)}</tbody></table></div>
+          <footer className="vendor-report-footer"><label>Tampilkan <select value={vendorReportPageSize} onChange={(e) => { setVendorReportPageSize(Number(e.target.value)); setVendorReportPage(1); }}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select> data</label><span>Menampilkan {(safeVendorReportPage - 1) * vendorReportPageSize + 1}–{Math.min(safeVendorReportPage * vendorReportPageSize, filteredVendorReportRows.length)} dari {filteredVendorReportRows.length}</span><div><button type="button" disabled={safeVendorReportPage <= 1} onClick={() => setVendorReportPage((page) => Math.max(1, page - 1))}>‹</button><b>{safeVendorReportPage}</b><button type="button" disabled={safeVendorReportPage >= vendorReportPageCount} onClick={() => setVendorReportPage((page) => Math.min(vendorReportPageCount, page + 1))}>›</button></div></footer>
+        </>}
+      </section>
+      {selectedVendorReportRow && <div className="owner-drawer-backdrop" onClick={() => setSelectedVendorReport(null)}><aside className="owner-drawer vendor-report-drawer" onClick={(e) => e.stopPropagation()}><header><div><p className="overline">RINCIAN VENDOR</p><h2>{selectedVendorReportRow.vendor}</h2><span>{selectedVendorReportRow.poId} · {selectedVendorReportRow.modelName}</span></div><button aria-label="Tutup rincian" onClick={() => setSelectedVendorReport(null)}>×</button></header><div className="vendor-detail-totals"><p><span>Dikirim</span><b>{selectedVendorReportRow.sent} unit</b></p><p><span>Sudah disetor</span><b>{selectedVendorReportRow.received} unit</b></p><p><span>Masih dijahit</span><b>{selectedVendorReportRow.remaining} unit</b></p><p><span>Status</span><b>{selectedVendorReportRow.status}</b></p></div><div className="vendor-detail-section"><h3>Bundle dikirim</h3>{selectedVendorReportRow.shipments.map((shipment) => <p key={shipment.id}><span><b>{shipment.bundleId || shipment.sourceId}</b><small>{shipment.id} · {shipment.date}</small></span><strong>{shipment.total} unit</strong></p>)}</div><div className="vendor-detail-section"><h3>Sisa warna & ukuran di vendor</h3>{selectedVendorReportRow.remainingVariants.length === 0 ? <p><span>Semua bundle telah disetor.</span></p> : selectedVendorReportRow.remainingVariants.map((variant) => <p key={`${variant.color}-${variant.size}`}><span><b>{variant.color} · {variant.size}</b></span><strong>{variant.qty} unit</strong></p>)}</div><div className="vendor-detail-section"><h3>Riwayat setoran gudang</h3>{selectedVendorReportRow.receipts.length === 0 ? <p><span>Belum ada setoran.</span></p> : selectedVendorReportRow.receipts.sort((a, b) => b.date.localeCompare(a.date)).map((receipt) => <p key={receipt.id}><span><b>{receipt.id}</b><small>{receipt.date}</small></span><strong>{receipt.total} unit</strong></p>)}</div></aside></div>}
+      </>}
+      {showFinancePrint && <FinanceReportPrint period={periodLabel} cutting={[cuttingBill, cuttingPaid]} vendor={[vendorBill, vendorPaid]} decoration={[decorationBill, decorationPaid]} qc={[qcBill, qcPaid]} payments={paymentRows} close={() => setShowFinancePrint(false)} />}
     </>
   );
+}
+function FinanceReportPrint({ period, cutting, vendor, decoration, qc, payments, close }: { period: string; cutting: [number, number]; vendor: [number, number]; decoration: [number, number]; qc: [number, number]; payments: FinancePaymentRow[]; close: () => void }) {
+  const stages: Array<[string, number, number]> = [
+      ["Cutting", cutting[0], cutting[1]],
+      ["Vendor jahit", vendor[0], vendor[1]],
+      ["Sablon/Bordir", decoration[0], decoration[1]],
+      ["Quality Control", qc[0], qc[1]],
+    ],
+    totalBill = stages.reduce((total, row) => total + row[1], 0),
+    totalPaid = stages.reduce((total, row) => total + row[2], 0);
+  return <div className="print-overlay payment-proof-overlay finance-report-print">
+    <div className="print-actions"><button onClick={close}>Tutup</button><button className="primary" onClick={() => window.print()}>Cetak Laporan</button></div>
+    <article className="payment-proof">
+      <header><img src="/oims-logo.jpg" alt="Logo Oims" /><div><small>OIMS · PRODUCTION MANAGEMENT</small><h1>Laporan Pembayaran Produksi</h1><b>Periode {period}</b></div></header>
+      <table className="payment-proof-table"><thead><tr><th>No.</th><th>Bagian</th><th>Tagihan</th><th>Dibayar</th><th>Sisa</th></tr></thead><tbody>{stages.map((row, index) => <tr key={row[0]}><td>{index + 1}</td><td>{row[0]}</td><td>{rupiah(row[1])}</td><td>{rupiah(row[2])}</td><td>{rupiah(Math.max(0, row[1] - row[2]))}</td></tr>)}</tbody><tfoot><tr><th colSpan={2}>TOTAL</th><th>{rupiah(totalBill)}</th><th>{rupiah(totalPaid)}</th><th>{rupiah(Math.max(0, totalBill - totalPaid))}</th></tr></tfoot></table>
+      <h2 className="finance-print-history-title">Riwayat Pembayaran</h2>
+      {payments.length === 0 ? <p>Belum ada pembayaran pada periode ini.</p> : <table className="payment-proof-table"><thead><tr><th>No.</th><th>Tanggal</th><th>Nomor Bukti</th><th>Jenis</th><th>Penerima</th><th>Nominal</th><th>Status</th></tr></thead><tbody>{payments.map((payment, index) => <tr key={`${payment.id}-${index}`}><td>{index + 1}</td><td>{payment.date}</td><td>{payment.id}</td><td>{payment.type}</td><td>{payment.payee}</td><td>{rupiah(payment.amount)}</td><td>{payment.status}</td></tr>)}</tbody></table>}
+    </article>
+  </div>;
 }
 function Empty({ title, text }: { title: string; text: string }) {
   return (
@@ -6683,6 +9544,146 @@ function Empty({ title, text }: { title: string; text: string }) {
     </div>
   );
 }
+function WeeklyPaymentPrint({
+  payment,
+  close,
+}: {
+  payment: WeeklyPayment;
+  close: () => void;
+}) {
+  return (
+    <div className="print-overlay payment-proof-overlay">
+      <div className="print-actions">
+        <button onClick={close}>Tutup</button>
+        <button className="primary" onClick={() => window.print()}>Cetak Rekap Mingguan</button>
+      </div>
+      <article className="payment-proof weekly-payment-proof">
+        <header>
+          <img src="/oims-logo.jpg" alt="Logo Oims" />
+          <div>
+            <small>OIMS · PRODUCTION MANAGEMENT</small>
+            <h1>Bukti Pembayaran Mingguan {payment.kind === "cutting" ? "Cutting" : payment.kind === "qc" ? "QC" : payment.kind === "decoration" ? "Vendor Sablon/Bordir" : "Vendor Jahit"}</h1>
+            <b>{payment.id}</b>
+          </div>
+        </header>
+        <div className="payment-proof-meta">
+          <p><span>Periode pekerjaan</span><b>{payment.periodStart} – {payment.periodEnd}</b></p>
+          <p><span>Tanggal pembayaran</span><b>{payment.paymentDate}</b></p>
+          <p><span>Penerima</span><b>{payment.payee}</b></p>
+          <p><span>Pengaju</span><b>{payment.requester || "Belum dicatat"}</b></p>
+          <p><span>Finance</span><b>{payment.pic}</b></p>
+          <p><span>Tujuan transfer</span><b>{payment.bankName && payment.accountNumber ? `${payment.bankName} ${payment.accountNumber}` : "Rekening belum diisi"}</b></p>
+          <p><span>Atas nama</span><b>{payment.accountHolder || payment.payee}</b></p>
+        </div>
+        <table className="payment-proof-table">
+          <thead><tr><th>No.</th><th>Kode transaksi</th><th>Model</th><th>Unit</th><th>Tarif</th><th>Jumlah</th></tr></thead>
+          <tbody>
+            {payment.lines.map((line, index) => (
+              <tr key={line.recordId}>
+                <td>{index + 1}</td><td>{line.recordId}</td><td>{line.modelName}</td><td>{line.units}</td><td>{rupiah(line.rate)}</td><td>{rupiah(line.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="payment-proof-totals">
+          <p><span>Total transaksi</span><b>{payment.lines.length}</b></p>
+          <p><span>Total unit</span><b>{payment.totalUnits}</b></p>
+          <p><span>Total tagihan</span><b>{rupiah(payment.totalAmount)}</b></p>
+          <p><span>Pembayaran sebelumnya</span><b>{rupiah(payment.paidBefore ?? 0)}</b></p>
+          <p className="current"><span>Pembayaran kali ini</span><b>{rupiah(payment.paymentAmount ?? payment.totalAmount)}</b></p>
+          <p><span>Sisa tagihan</span><strong>{rupiah(Math.max(0, payment.totalAmount - (payment.paidBefore ?? 0) - (payment.paymentAmount ?? payment.totalAmount)))}</strong></p>
+          <p><span>Status</span><b>{payment.totalAmount <= (payment.paidBefore ?? 0) + (payment.paymentAmount ?? payment.totalAmount) ? "LUNAS" : "DP SEBAGIAN"}</b></p>
+        </div>
+        {payment.note && <p className="payment-proof-note"><b>Catatan:</b> {payment.note}</p>}
+        {payment.voided && <p className="payment-proof-void">BUKTI DIBATALKAN · {payment.voidReason}</p>}
+        <footer><div><span>Diajukan oleh</span><b>{payment.requester || "PIC Produksi"}</b></div><div><span>Diperiksa Finance</span><b>{payment.pic}</b></div></footer>
+      </article>
+    </div>
+  );
+}
+function PaymentReceiptPrint({
+  receipt,
+  payment,
+  shipment,
+  kind,
+  close,
+}: {
+  receipt: RecordRow;
+  payment: PaymentEntry;
+  shipment?: RecordRow;
+  kind: "vendor" | "cutting";
+  close: () => void;
+}) {
+  const rate =
+      kind === "cutting"
+        ? receipt.cuttingRate ?? 0
+        : receipt.sewingRate ?? shipment?.sewingRate ?? 0,
+    bill = receipt.total * rate,
+    history = legacyPayment(receipt),
+    paidBefore = history
+      .filter((item) => item.id !== payment.id && !item.voided)
+      .reduce((total, item) => total + item.amount, 0),
+    paidAfter = payment.voided ? paidBefore : paidBefore + payment.amount;
+  return (
+    <div className="print-overlay payment-proof-overlay">
+      <div className="print-actions">
+        <button onClick={close}>Tutup</button>
+        <button className="primary" onClick={() => window.print()}>
+          Cetak Bukti Pembayaran
+        </button>
+      </div>
+      <article className="payment-proof">
+        <header>
+          <img src="/oims-logo.jpg" alt="Logo Oims" />
+          <div>
+            <small>OIMS · PRODUCTION MANAGEMENT</small>
+            <h1>
+              Bukti Pembayaran Jasa {kind === "cutting" ? "Cutting" : "Jahit"}
+            </h1>
+            <b>{payment.id}</b>
+          </div>
+        </header>
+        <div className="payment-proof-meta">
+          <p><span>Tanggal</span><b>{payment.date}</b></p>
+          <p>
+            <span>{kind === "cutting" ? "Pelaksana" : "Vendor"}</span>
+            <b>{kind === "cutting" ? receipt.officer || "—" : shipment?.destination || "—"}</b>
+          </p>
+          <p><span>Penerimaan</span><b>{receipt.id}</b></p>
+          <p><span>Batch Cutting / Bundle</span><b>{receipt.poId || "—"} / {receipt.bundleId || "—"}</b></p>
+          <p><span>Model</span><b>{receipt.modelName}</b></p>
+          <p><span>PIC Finance</span><b>{payment.pic}</b></p>
+        </div>
+        <table className="payment-proof-table">
+          <thead><tr><th>No.</th><th>Warna</th><th>Size</th><th>Jumlah</th><th>Tarif</th><th>Nilai</th></tr></thead>
+          <tbody>
+            {receipt.variants.map((variant, index) => (
+              <tr key={`${variant.color}-${variant.size}`}>
+                <td>{index + 1}</td><td>{variant.color}</td><td>{variant.size}</td>
+                <td>{variant.qty} unit</td><td>{rupiah(rate)}</td><td>{rupiah(variant.qty * rate)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="payment-proof-totals">
+          <p><span>Total tagihan</span><b>{rupiah(bill)}</b></p>
+          <p><span>Pembayaran sebelumnya</span><b>{rupiah(paidBefore)}</b></p>
+          <p className="current"><span>Pembayaran kali ini</span><b>{rupiah(payment.amount)}</b></p>
+          <p><span>Total setelah pembayaran</span><b>{rupiah(paidAfter)}</b></p>
+          <p><span>Sisa tagihan</span><strong>{rupiah(Math.max(0, bill - paidAfter))}</strong></p>
+          <p><span>Status</span><b>{payment.voided ? "DIBATALKAN" : paymentStatus(bill, paidAfter)}</b></p>
+        </div>
+        {payment.note && <p className="payment-proof-note"><b>Catatan:</b> {payment.note}</p>}
+        {payment.voided && <p className="payment-proof-void">BUKTI DIBATALKAN · {payment.voidReason}</p>}
+        <footer>
+          <div><span>Dibuat oleh</span><b>{payment.pic}</b></div>
+          <div><span>Diterima oleh</span><b>{kind === "cutting" ? receipt.officer || "Pelaksana Cutting" : shipment?.destination || "Vendor"}</b></div>
+        </footer>
+      </article>
+    </div>
+  );
+}
+
 function PrintNote({ note, close }: { note: Note; close: () => void }) {
   const colors = [...new Set(note.variants.map((v) => v.color))];
   const sizes = [...new Set(note.variants.map((v) => v.size))];
