@@ -1756,18 +1756,7 @@ function cuttingWorkflowStatus(
     : { label: "Selesai Dibundle", tone: "done", done: true };
 }
 
-const tableToolbarStages = new Set([
-  "Bundle",
-  "Sablon/Bordir",
-  "Pengiriman Vendor",
-  "Penerimaan Gudang",
-  "Pengiriman QC",
-  "Quality Control",
-  "Rework",
-  "Penerimaan Rework",
-  "QC Ulang",
-  "Stok Barang Jadi",
-]);
+const tableToolbarStages = new Set(stages);
 
 const qcOperationalStages = new Set([
   "Pengiriman QC",
@@ -1778,6 +1767,7 @@ const qcOperationalStages = new Set([
 ]);
 
 function stagePrimaryActionLabel(active: string) {
+  if (active === "Cutting") return "Catat hasil Cutting";
   if (active === "Sablon/Bordir") return "Buat pekerjaan dekorasi";
   if (active === "Pengiriman Vendor") return "Kirim ke vendor";
   if (active === "Penerimaan Gudang") return "Terima setoran vendor";
@@ -2040,7 +2030,7 @@ function LiveStageStatus({
         </div>
         {onAdd && addLabel && <button type="button" className="primary live-status-add" disabled={addDisabled} onClick={onAdd}>＋ {addLabel}</button>}
       </div>}
-      {active === "Bundle" && <div className="mobile-view-switch" role="group" aria-label="Tampilan data Belum Bundle">
+      {showTableToolbar && <div className="mobile-view-switch" role="group" aria-label={`Tampilan data ${active}`}>
         <button type="button" className={mobileView === "cards" ? "active" : ""} onClick={() => setMobileView("cards")}><span>☷</span> Kartu</button>
         <button type="button" className={mobileView === "table" ? "active" : ""} onClick={() => setMobileView("table")}><span>▥</span> Tabel</button>
       </div>}
@@ -4414,17 +4404,6 @@ export default function Home() {
                   {["Cutting", "Sablon/Bordir", "Bundle"].includes(active) && (
                     <div className="production-stage-breadcrumb">
                       <span>{active === "Sablon/Bordir" ? "Sablon & Bordir" : "Produksi"}</span><b>›</b><strong>{active}</strong>
-                    </div>
-                  )}
-                  {active === "Cutting" && (
-                    <div className="stage-top-action">
-                      <button
-                        className="primary"
-                        type="button"
-                        onClick={openRecord}
-                      >
-                        ＋ Catat hasil Cutting
-                      </button>
                     </div>
                   )}
                   <LiveStageStatus

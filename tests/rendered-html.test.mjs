@@ -163,7 +163,7 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Master Vendor/);
   assert.match(page, /master-data-table/);
   assert.match(page, /mobile-view-switch/);
-  assert.match(page, /Tampilan data Belum Bundle/);
+  assert.match(page, /Tampilan data \$\{active\}/);
   assert.match(page, /Tampilan Bundle siap dikirim/);
   assert.match(page, /MasterTablePanel/);
   assert.match(css, /\.master-data-table/);
