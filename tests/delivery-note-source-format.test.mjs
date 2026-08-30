@@ -45,3 +45,10 @@ test("surat jalan supports compact one, two, or three-copy A4 printing", () => {
 test("print overlay remains visible in print media", () => {
   assert.match(styles, /\.print-overlay\s*\{[\s\S]*?display:\s*block\s*!important;/);
 });
+
+test("delivery note print is portaled outside the application layout", () => {
+  assert.match(source, /import \{ createPortal \} from "react-dom";/);
+  assert.match(source, /function PrintNote[\s\S]*?return createPortal\([\s\S]*?document\.body,/);
+  assert.match(styles, /body > \.app-shell\s*\{\s*display:\s*none !important;/);
+  assert.match(styles, /body > \.print-overlay\s*\{[\s\S]*?width:\s*100% !important;/);
+});

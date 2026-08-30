@@ -11397,6 +11397,43 @@ body {
 }
 
 @media print {
+  html,
+  body {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* Surat jalan dipindahkan langsung ke body melalui portal. Dengan begitu
+     ukuran cetak tidak lagi mengikuti flex/overflow layout aplikasi. */
+  body > .app-shell {
+    display: none !important;
+  }
+
+  body > .print-overlay {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+    background: #fff !important;
+  }
+
+  body > .print-overlay .delivery-note-sheet,
+  body > .print-overlay .delivery-note-document,
+  body > .print-overlay .delivery-note-document * {
+    visibility: visible !important;
+  }
+
   @page {
     size: A4 portrait;
     margin: 7mm;

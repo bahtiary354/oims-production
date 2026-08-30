@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, Fragment, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { applyDecorationReceipt, getDecorationReceiptState, validateDecorationReceiptInput } from "../lib/decoration-receipt";
 
 const stages = [
@@ -10565,7 +10566,7 @@ function PrintNote({ note, close }: { note: Note; close: () => void }) {
   const sizes = [...new Set(note.variants.map((v) => v.size))];
   const sourceGroups = deliveryNoteSourceGroups(note);
   const copyLabels = copiesPerPage === 3 ? ["Pengirim", "Penerima", "Arsip"] : copiesPerPage === 2 ? ["Pengirim", "Penerima"] : ["Asli"];
-  return (
+  return createPortal(
     <div className="overlay print-overlay">
       <section className={`print-sheet delivery-note-sheet print-layout-${copiesPerPage}`}>
         <div className="print-toolbar">
@@ -10681,7 +10682,8 @@ function PrintNote({ note, close }: { note: Note; close: () => void }) {
           {copyIndex < copyLabels.length - 1 && <span className="delivery-note-cut-line" aria-hidden="true">Potong di sini</span>}
         </div>)}
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
