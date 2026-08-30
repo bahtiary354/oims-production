@@ -114,13 +114,26 @@ function normalizeState(saved: Record<string, unknown>) {
             model.decorationProcess === "both"
               ? model.decorationProcess
               : "both",
+          decorationTemplates: Array.isArray(model.decorationTemplates)
+            ? model.decorationTemplates
+                .filter((template): template is Record<string, unknown> => !!template && typeof template === "object")
+                .map((template, index) => ({
+                  id: typeof template.id === "string" && template.id ? template.id : `legacy-template-${index + 1}`,
+                  type: template.type === "embroidery" ? "embroidery" : "screenprint",
+                  position: typeof template.position === "string" ? template.position : "",
+                  description: typeof template.description === "string" ? template.description : "",
+                  defaultRate: typeof template.defaultRate === "number" && Number.isFinite(template.defaultRate) ? Math.max(0, template.defaultRate) : 0,
+                }))
+            : [],
         }))
       : [],
     vendors: Array.isArray(saved.vendors)
       ? (saved.vendors as Array<Record<string, unknown>>).map((vendor) => ({
           ...vendor,
-          qcMode: "internal",
-          qcOfficer: "",
+          // Keep the master-data setting intact. Older data without this field
+          // still defaults to the current internal-QC workflow.
+          qcMode: vendor.qcMode === "vendor" ? "vendor" : "internal",
+          qcOfficer: typeof vendor.qcOfficer === "string" ? vendor.qcOfficer : "",
         }))
       : [],
     qcLocations: Array.isArray(saved.qcLocations) ? saved.qcLocations : [],
