@@ -2,7 +2,9 @@
 
 import { FormEvent, Fragment, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { usePathname, useRouter } from "next/navigation";
 import { applyDecorationReceipt, getDecorationReceiptState, validateDecorationReceiptInput } from "../lib/decoration-receipt";
+import { pageForPath, pathForPage } from "../lib/navigation";
 
 const stages = [
   "Cutting",
@@ -2291,16 +2293,23 @@ function LiveStageStatus({
 }
 
 export default function Home() {
-  const [active, setActive] = useState("Dashboard");
+  const pathname = usePathname();
+  const router = useRouter();
+  const active: string = pageForPath(pathname);
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [openNavGroup, setOpenNavGroup] = useState<string | null>(null);
+  const [openNavGroup, setOpenNavGroup] = useState<string | null>(() =>
+    navGroups.find((group) =>
+      group.items.some((item) => item === active),
+    )?.id ?? null,
+  );
   function navigate(name: string) {
-    setActive(name);
     setOpenNavGroup(
       navGroups.find((group) =>
         group.items.some((item) => item === name),
       )?.id ?? null,
     );
+    const nextPath = pathForPage(name);
+    if (pathname !== nextPath) router.push(nextPath, { scroll: false });
   }
   const [data, setData] = useState<AppData>(initial);
   const updatedAtRef = useRef<string | undefined>(initial.updatedAt);
