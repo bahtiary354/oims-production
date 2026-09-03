@@ -3217,7 +3217,9 @@ export default function Home() {
     const info = stageInfo[active];
     const sources = info.source ? sourcesForStage(active) : [];
     const first =
-      active === "Bundle"
+      active === "Penerimaan Gudang"
+        ? undefined
+      : active === "Bundle"
         ? sources.find((x) => sum(remainingFor(x)) > 0)
         : sources.find((x) => sourceAvailable(active, x));
     const vendor =
@@ -4139,6 +4141,26 @@ export default function Home() {
         flash("Jumlah diterima melebihi sisa barang di vendor.");
         return;
       }
+      const variantSummary = matrix
+        .filter((variant) => variant.qty > 0)
+        .map((variant) => `- ${variant.color} / ${variant.size}: ${variant.qty} unit`)
+        .join("\n");
+      const confirmed = window.confirm(
+        [
+          "Konfirmasi penerimaan gudang",
+          "",
+          `Vendor: ${source.destination || "—"}`,
+          `Surat jalan: ${source.deliveryNoteId || source.id}`,
+          `Model: ${model.code} — ${model.name}`,
+          `Total: ${sum(matrix)} unit`,
+          "",
+          "Rincian warna / ukuran:",
+          variantSummary,
+          "",
+          "Simpan penerimaan ini?",
+        ].join("\n"),
+      );
+      if (!confirmed) return;
     }
     if (active === "Pengiriman QC") {
       const source = (data.records["Penerimaan Gudang"] ?? []).find(
@@ -6105,7 +6127,9 @@ export default function Home() {
                         "Penerimaan Gudang",
                         "Pengiriman QC",
                       ].includes(active)
-                    ? "Simpan & buat surat jalan"
+                    ? active === "Penerimaan Gudang"
+                      ? "Simpan penerimaan"
+                      : "Simpan & buat surat jalan"
                     : editingDecorationRecord ? "Simpan perubahan" : "Simpan proses"}
               </button>
             </div>
