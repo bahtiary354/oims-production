@@ -22,3 +22,21 @@ test("penerimaan stok memakai pengaman sumber QC yang sudah pernah dibukukan", (
   assert.match(availability, /data\.records\["Stok Barang Jadi"\]/);
   assert.match(availability, /x\.sourceId === source\.id/);
 });
+
+test("persediaan tidak menampilkan ulang bagian transaksi selesai", () => {
+  const inventoryPanel = page.slice(
+    page.indexOf("function StockInventoryPanel"),
+    page.indexOf("function StagePage"),
+  );
+  assert.doesNotMatch(inventoryPanel, /Transaksi selesai/i);
+  assert.match(page, /active !== "Stok Barang Jadi" && <LiveStageStatus/);
+});
+
+test("mutasi dan laporan operasional memakai referensi transaksi yang sama", () => {
+  assert.match(page, /function unifiedTransactionReference\(/);
+  assert.match(page, /Cutting: \{reference\.cutting\}/);
+  assert.match(page, /Bundle\/Lot: \{reference\.bundle\}/);
+  assert.match(page, /Sumber: \{reference\.source\}/);
+  const usages = page.match(/<UnifiedTransactionReferenceCell row=\{row\}/g) ?? [];
+  assert.equal(usages.length, 2);
+});

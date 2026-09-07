@@ -373,6 +373,58 @@ function poLotToken(poId?: string) {
 function shortBundleCode(bundleId?: string) {
   return bundleId?.match(/B\d{3}$/)?.[0] ?? bundleId ?? "—";
 }
+type UnifiedTransactionReference = {
+  cutting: string;
+  bundle: string;
+  source: string;
+};
+function unifiedTransactionReference(
+  row: RecordRow,
+  records: Record<string, RecordRow[]>,
+): UnifiedTransactionReference {
+  const index = new Map(
+    Object.values(records)
+      .flat()
+      .map((record) => [record.id, record]),
+  );
+  let current: RecordRow | undefined = row;
+  let cutting = row.stage === "Cutting" ? row.id : "";
+  let bundle = row.bundleId ?? (row.stage === "Bundle" ? row.id : "");
+  let source = ["Quality Control", "QC Ulang"].includes(row.stage)
+    ? row.id
+    : "";
+  const visited = new Set<string>();
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+    if (!cutting && current.stage === "Cutting") cutting = current.id;
+    if (!bundle && current.stage === "Bundle") bundle = current.id;
+    if (!bundle && current.bundleId) bundle = current.bundleId;
+    if (!source && ["Quality Control", "QC Ulang"].includes(current.stage))
+      source = current.id;
+    current = current.sourceId ? index.get(current.sourceId) : undefined;
+  }
+  return {
+    cutting: cutting || row.poId || "—",
+    bundle: bundle ? shortBundleCode(bundle) : "—",
+    source: source || row.sourceId || row.id,
+  };
+}
+function UnifiedTransactionReferenceCell({
+  row,
+  records,
+}: {
+  row: RecordRow;
+  records: Record<string, RecordRow[]>;
+}) {
+  const reference = unifiedTransactionReference(row, records);
+  return (
+    <span className="unified-transaction-reference">
+      <b>Cutting: {reference.cutting}</b>
+      <small>Bundle/Lot: {reference.bundle}</small>
+      <small>Sumber: {reference.source}</small>
+    </span>
+  );
+}
 type DeliveryNoteSourceGroup = {
   cuttingCode: string;
   bundleCodes: string[];
@@ -8346,10 +8398,12 @@ function RejectQuarantine({ rows }: { rows: RecordRow[] }) {
 
 function StockInventoryPanel({
   rows,
+  allRecords,
   pendingSources,
   onReceive,
 }: {
   rows: RecordRow[];
+  allRecords: Record<string, RecordRow[]>;
   pendingSources: RecordRow[];
   onReceive: () => void;
 }) {
@@ -8416,7 +8470,7 @@ function StockInventoryPanel({
             <td>{(safePage - 1) * pageSize + index + 1}</td>
             <td><b>{view === "stock" ? row.modelCode : row.id}</b>{view === "history" && row.bundleId && <small>Bundle {shortBundleCode(row.bundleId)}</small>}</td>
             <td><b>{row.modelName}</b><small>{row.modelCode}</small>{view === "stock" && <small>{row.note} transaksi sumber</small>}</td>
-            {view === "history" && <td><b>{row.poId || "—"}</b><small>{row.sourceId || "—"}</small></td>}
+            {view === "history" && <td><UnifiedTransactionReferenceCell row={row} records={allRecords} /></td>}
             <td><VariantSummaryButton row={row} onOpen={() => setSelectedRow(row)} /></td>
             <td><b>{row.total}</b> unit</td><td>{row.date}</td>
             <td><button type="button" className="stock-detail-button" onClick={() => setSelectedRow(row)}>Lihat rincian →</button></td>
@@ -8694,6 +8748,7 @@ function StagePage({
     return (
       <StockInventoryPanel
         rows={rows}
+        allRecords={allRecords}
         pendingSources={pendingStockSources}
         onReceive={onAdd}
       />
@@ -10446,7 +10501,7 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
                 {visibleOperationalColumns[0] && <td data-label="No.">{(safeOperationalPage - 1) * operationalPageSize + index + 1}</td>}
                 {visibleOperationalColumns[1] && <td data-label="Tanggal">{row.date}</td>}
                 {visibleOperationalColumns[2] && <td data-label="Kode Transaksi"><b>{row.id}</b></td>}
-                {visibleOperationalColumns[3] && <td data-label="Referensi"><span><b>{row.sourceId || row.poId || "—"}</b>{row.bundleId ? <small>{shortBundleCode(row.bundleId)}</small> : null}</span></td>}
+                {visibleOperationalColumns[3] && <td data-label="Referensi"><UnifiedTransactionReferenceCell row={row} records={data.records} /></td>}
                 {visibleOperationalColumns[4] && <td data-label="Model"><span><b>{row.modelName}</b><small>{row.modelCode}</small></span></td>}
                 {visibleOperationalColumns[5] && <td data-label="Pelaksana / Tujuan">{party}</td>}
                 {visibleOperationalColumns[6] && <td data-label="Rincian Varian"><button type="button" className="operational-variant-trigger" onClick={() => setSelectedOperationalRowId(row.id)}><span><b>{colorCount} warna</b><small>{sizeCount} ukuran · {row.variants.length} varian</small></span><em>Lihat rincian →</em></button></td>}
