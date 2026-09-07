@@ -30,6 +30,10 @@ test("persediaan tidak menampilkan ulang bagian transaksi selesai", () => {
   );
   assert.doesNotMatch(inventoryPanel, /Transaksi selesai/i);
   assert.match(page, /active !== "Stok Barang Jadi" && <LiveStageStatus/);
+  assert.match(
+    page,
+    /'Penerimaan Gudang', 'Stok Barang Jadi'\]\.includes\(active\).*mode="completed"/s,
+  );
 });
 
 test("mutasi dan laporan operasional memakai referensi transaksi yang sama", () => {

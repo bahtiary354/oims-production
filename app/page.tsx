@@ -4867,7 +4867,7 @@ export default function Home() {
                       rows={current}
                     />
                   )}
-                  {!['Cutting', 'Sablon/Bordir', 'Bundle', 'Pengiriman Vendor', 'Penerimaan Gudang'].includes(active) && !qcOperationalStages.has(active) && (
+                  {!['Cutting', 'Sablon/Bordir', 'Bundle', 'Pengiriman Vendor', 'Penerimaan Gudang', 'Stok Barang Jadi'].includes(active) && !qcOperationalStages.has(active) && (
                     <LiveStageStatus
                       active={active}
                       rows={current}
