@@ -10254,6 +10254,20 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
         ? selected.filter((item) => item !== key)
         : [...selected, key],
     );
+  const financeVariantSummary = (record?: RecordRow) => {
+      if (!record) return "Rincian varian tidak tersedia";
+      const grouped = new Map<string, string[]>();
+      record.variants.filter((variant) => variant.qty > 0).forEach((variant) => {
+        grouped.set(variant.color, [...(grouped.get(variant.color) ?? []), `${variant.size}: ${variant.qty}`]);
+      });
+      return [...grouped.entries()].map(([color, sizes]) => `${color} — ${sizes.join(", ")}`).join(" · ") || "Rincian varian tidak tersedia";
+    },
+    financeBundleText = (record?: RecordRow) => record ? shortBundleCode(record.bundleId || (record.stage === "Bundle" ? record.id : "")) : "—",
+    financeWorkText = (record?: RecordRow, type?: string) => {
+      if (!record || type !== "Sablon/Bordir") return "";
+      const work = record.decorationType === "embroidery" ? "Bordir" : record.decorationType === "screenprint" ? "Sablon" : "Dekorasi";
+      return [work, record.decorationPosition, record.decorationDescription].filter(Boolean).join(" · ");
+    };
   const createPaymentFromReport = (row: (typeof financeLedgerRows)[number], weeks: typeof financeWeeklyRows) => {
     const selectedWeeks = weeks.length > 0 ? weeks : row.weeks.filter((week) => week.remaining > 0);
     if (selectedWeeks.length === 0) return;
@@ -10298,6 +10312,7 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
             (poLine) =>
               `   - ${poLine.poId} — ${poLine.modelName}: ${poLine.units} unit, tagihan ${rupiah(poLine.amount)}`,
           ),
+          ...weekRow.records.map((record) => `   Warna/ukuran: ${financeVariantSummary(record)}`),
           `   Dibayar ${rupiah(weekRow.paid)} · Sisa ${rupiah(weekRow.remaining)}`,
         ];
       });
@@ -10336,8 +10351,11 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
       ["TOTAL", totalBill, totalPaid, totalRemaining],
       [],
       ["DAFTAR TUJUAN TRANSFER"],
-      ["Kode transaksi", "Tanggal", "Jenis", "Penerima", "Bank", "Nomor rekening", "Atas nama", "Tagihan", "Dibayar", "Sisa", "Status"],
-      ...filteredFinanceRows.map((row) => [row.transactionId, row.transactionDate, row.type, row.payee, row.bankName || "Belum diisi", row.accountNumber || "Belum diisi", row.accountHolder || row.payee, row.bill, row.paid, row.remaining, row.status]),
+      ["Kode transaksi", "Tanggal", "Jenis", "Penerima", "Model", "Bundle/Lot", "Pekerjaan", "Warna & ukuran", "Unit", "Tarif/unit", "Bank", "Nomor rekening", "Atas nama", "Tagihan", "Dibayar", "Sisa", "Status"],
+      ...filteredFinanceRows.map((row) => {
+        const record = row.weeks[0]?.records[0], units = record ? reportRowUnits(record) : 0;
+        return [row.transactionId, row.transactionDate, row.type, row.payee, record?.modelName || "—", financeBundleText(record), financeWorkText(record, row.type) || "—", financeVariantSummary(record), units, units > 0 ? row.bill / units : 0, row.bankName || "Belum diisi", row.accountNumber || "Belum diisi", row.accountHolder || row.payee, row.bill, row.paid, row.remaining, row.status];
+      }),
       [],
       ["RIWAYAT PEMBAYARAN"],
       ["Tanggal", "Nomor bukti", "Jenis", "Penerima", "Nominal", "Status"],
@@ -10443,7 +10461,19 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
         <div className={`finance-drawer-account ${hasCompleteTransferAccount(selectedFinanceRow) ? "" : "incomplete"}`}><span>Tujuan transfer</span>{hasCompleteTransferAccount(selectedFinanceRow) ? <><b>{selectedFinanceRow.bankName} · {selectedFinanceRow.accountNumber}</b><small>a.n. {selectedFinanceRow.accountHolder}</small></> : <><b>Rekening belum lengkap</b><small>WA tetap dapat dibuat, tetapi Finance perlu rekening yang lengkap sebelum transfer.</small><button type="button" onClick={() => { setExpandedFinanceRow(null); go(selectedFinanceRow.type === "Cutting" ? "Master PIC" : selectedFinanceRow.type === "Quality Control" ? "Master QC" : "Master Vendor"); }}>Lengkapi data {selectedFinanceRow.type === "Cutting" ? "PIC" : selectedFinanceRow.type === "Quality Control" ? "QC" : "vendor"}</button></>}</div>
         <div className="finance-drawer-summary"><p><span>Tagihan</span><b>{rupiah(selectedFinanceRow.bill)}</b></p><p><span>Sudah dibayar</span><b>{rupiah(selectedFinanceRow.paid)}</b></p><p><span>Sisa</span><strong>{rupiah(selectedFinanceRow.remaining)}</strong></p><p><span>Status</span><em className={`finance-status ${selectedFinanceRow.status === "Lunas" ? "paid" : selectedFinanceRow.status === "DP sebagian" ? "partial" : "unpaid"}`}>{selectedFinanceRow.status}</em></p></div>
         <div className="finance-week-detail finance-drawer-week-detail"><header><div><b>Tagihan transaksi</b></div><button type="button" disabled={selectedFinanceOutstandingWeeks.length === 0} onClick={() => { const keys = selectedFinanceOutstandingWeeks.map((row) => row.key); setSelectedFinanceWeeks((selected) => selectedFinanceAllOutstanding ? selected.filter((key) => !keys.includes(key)) : [...new Set([...selected, ...keys])]); }}>{selectedFinanceAllOutstanding ? "Batalkan pilihan" : "Pilih tagihan"}</button></header>
-          <div className="finance-week-list">{selectedFinanceVisibleWeeks.map((transactionRow) => <label key={transactionRow.key} className={transactionRow.remaining <= 0 ? "paid" : ""}><input type="checkbox" disabled={transactionRow.remaining <= 0} checked={selectedFinanceWeeks.includes(transactionRow.key)} onChange={() => toggleFinanceWeek(transactionRow.key)} /><span><b>{transactionRow.records[0]?.id || "—"}</b><small>{transactionRow.start} · {transactionRow.records[0]?.modelName}</small></span><p><small>Tagihan</small><b>{rupiah(transactionRow.bill)}</b></p><p><small>Dibayar</small><b>{rupiah(transactionRow.paid)}</b></p><p><small>Sisa</small><strong>{rupiah(transactionRow.remaining)}</strong></p><em className={`finance-status ${transactionRow.status === "Lunas" ? "paid" : transactionRow.status === "DP sebagian" ? "partial" : "unpaid"}`}>{transactionRow.status}</em></label>)}</div>
+          <div className="finance-week-list">{selectedFinanceVisibleWeeks.map((transactionRow) => {
+            const record = transactionRow.records[0],
+              units = record ? reportRowUnits(record) : 0,
+              rate = units > 0 ? transactionRow.bill / units : 0,
+              work = financeWorkText(record, selectedFinanceRow.type);
+            return <label key={transactionRow.key} className={`finance-transaction-card ${transactionRow.remaining <= 0 ? "paid" : ""}`}>
+              <input type="checkbox" disabled={transactionRow.remaining <= 0} checked={selectedFinanceWeeks.includes(transactionRow.key)} onChange={() => toggleFinanceWeek(transactionRow.key)} />
+              <span className="finance-transaction-identity"><b>{record?.id || "—"}</b><small>{transactionRow.start} · {record?.modelName || "Model tidak tersedia"}{record?.modelCode ? ` (${record.modelCode})` : ""}</small><small>Bundle/Lot: {financeBundleText(record)}{work ? ` · ${work}` : ""}</small></span>
+              <span className="finance-transaction-variants"><small>Warna & ukuran</small><b>{financeVariantSummary(record)}</b></span>
+              <p><small>Unit</small><b>{units}</b></p><p><small>Tarif/unit</small><b>{rupiah(rate)}</b></p><p><small>Tagihan</small><b>{rupiah(transactionRow.bill)}</b></p><p><small>Sisa</small><strong>{rupiah(transactionRow.remaining)}</strong></p>
+              <em className={`finance-status ${transactionRow.status === "Lunas" ? "paid" : transactionRow.status === "DP sebagian" ? "partial" : "unpaid"}`}>{transactionRow.status}</em>
+            </label>;
+          })}</div>
           <footer><span>{selectedFinanceCheckedWeeks.length > 0 ? `1 transaksi dipilih · ${rupiah(selectedFinanceCheckedWeeks.reduce((total, row) => total + row.remaining, 0))}` : "Pilih transaksi yang akan dibayar"}</span><div className="finance-drawer-actions"><button type="button" disabled={selectedFinanceCheckedWeeks.length === 0} onClick={() => createPaymentFromReport(selectedFinanceRow, selectedFinanceCheckedWeeks)}>Catat pembayaran</button>{financePhone && selectedFinanceCheckedWeeks.length > 0 ? <a href={whatsappURL(selectedReminder(selectedFinanceRow, selectedFinanceCheckedWeeks))} target="_blank" rel="noreferrer">Ajukan via WA</a> : <button type="button" disabled>{!financePhone ? "Nomor Finance belum lengkap" : "Pilih transaksi dahulu"}</button>}</div></footer>
         </div>
         </div>

@@ -14,6 +14,11 @@ test("finance report presents bills per transaction instead of vendor period", a
   assert.match(page, /financeLedgerRows\.find\(\(row\) => row\.key === expandedFinanceRow\)/);
   assert.match(page, /<th>Kode Transaksi<\/th>/);
   assert.match(page, /Tagihan transaksi/);
+  assert.match(page, /financeVariantSummary/);
+  assert.match(page, /financeBundleText/);
+  assert.match(page, /financeWorkText/);
+  assert.match(page, /Warna & ukuran/);
+  assert.match(page, /Tarif\/unit/);
   assert.doesNotMatch(page, /const transferMap = new Map/);
   assert.doesNotMatch(page, /const weeklyTransferMap = new Map/);
 });
