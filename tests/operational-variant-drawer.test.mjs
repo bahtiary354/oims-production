@@ -10,6 +10,9 @@ test("rincian varian operasional memakai pemicu ringkas dan drawer matriks bersa
   assert.match(page, /function VariantDetailDrawer/);
   assert.match(page, /className="operational-variant-matrix"/);
   assert.match(page, /aria-modal="true"/);
+  assert.match(page, /<tfoot><tr><td colSpan=\{sizes\.length \+ 1\}>Total \{row\.modelName\}/);
+  assert.match(page, /summary-model-total-row/);
+  assert.match(page, /Total \{model\.modelName\}/);
 });
 
 test("tabel status aktif, transaksi selesai, dan bundle membuka drawer yang sama", () => {

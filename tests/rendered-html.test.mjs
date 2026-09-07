@@ -5,9 +5,11 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 
 test("production app has correct metadata and connected workflow", async () => {
-  const [layout, page] = await Promise.all([
+  const [layout, page, navigation, sidebar] = await Promise.all([
     readFile(new URL("app/layout.tsx", root), "utf8"),
     readFile(new URL("app/page.tsx", root), "utf8"),
+    readFile(new URL("app/lib/navigation.ts", root), "utf8"),
+    readFile(new URL("app/components/app-sidebar.tsx", root), "utf8"),
   ]);
   assert.match(layout, /Oims Production Management/);
   for (const stage of [
@@ -36,6 +38,8 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /QC terpisah setelah barang masuk gudang/);
   assert.match(page, /Penerimaan Gudang → Pengiriman QC → Quality Control/);
   assert.match(page, /Surat jalan pengiriman vendor/);
+  assert.match(page, /Cari nomor surat, cutting, bundle, model, atau vendor/);
+  assert.match(page, /aria-label="Cari surat jalan pengiriman vendor"/);
   assert.match(page, /SURAT JALAN PENGIRIMAN/);
   assert.match(page, /tersimpan sebagai bukti penerimaan/);
   assert.match(
@@ -71,7 +75,9 @@ test("production app has correct metadata and connected workflow", async () => {
   );
   assert.match(css, /\.print-head h1\s*\{\s*font-size:\s*22px/);
   assert.doesNotMatch(page, /className="mobile-bottom-nav"/);
-  assert.match(page, /aria-label="Buka semua menu"/);
+  assert.match(sidebar, /aria-label="Tutup menu"/);
+  const topbar = await readFile(new URL("app/components/app-topbar.tsx", root), "utf8");
+  assert.match(topbar, /aria-label="Buka semua menu"/);
   assert.match(css, /\.app-side\.mobile-open/);
   assert.match(
     css,
@@ -84,10 +90,10 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.doesNotMatch(css, /mobile-bottom-nav/);
   assert.match(css, /grid-template-columns:\s*repeat\(5,\s*1fr\)/);
   assert.match(
-    page,
+    navigation,
     /\[\s*"▥",\s*"Laporan Operasional"\s*\],\s*\[\s*"Rp",\s*"Laporan Keuangan"\s*\],\s*\[\s*"↺",\s*"Riwayat Pembayaran"\s*\],\s*\[\s*"▤",\s*"Surat Jalan"\s*\]/,
   );
-  const navBlock = page.match(/const nav = \[[\s\S]*?\n\];/)?.[0];
+  const navBlock = navigation.match(/const navItems = \[[\s\S]*?\n\] as const;/)?.[0];
   assert.ok(navBlock, "primary navigation should be defined");
   assert.match(navBlock, /Master QC/);
   assert.match(navBlock, /Master PIC/);
@@ -110,11 +116,15 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.doesNotMatch(page, /Stok jadi & potensi produksi/);
   assert.match(page, /STOK JADI/);
   assert.match(page, /TOTAL CUTTING/);
-  assert.match(page, /SEDANG PROSES/);
+  assert.match(page, /DI GUDANG CUTTING/);
+  assert.match(page, /SEDANG DIJAHIT/);
   assert.match(page, /SEDANG QC/);
   assert.match(page, /REPAIR/);
   assert.match(page, /REJECT/);
-  assert.match(page, /summaryProduction/);
+  assert.match(page, /summaryCuttingWarehouse/);
+  assert.match(page, /summarySewingVendor/);
+  assert.match(page, /cuttingWarehouseRows/);
+  assert.match(page, /sewingVendorRows/);
   assert.match(page, /summaryCutting/);
   assert.match(page, /summaryQC/);
   assert.match(page, /summaryRepair/);
@@ -137,7 +147,11 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(css, /\.stock-color-group/);
   assert.match(css, /background:\s*#ffffff/);
   assert.match(css, /font-size:\s*16px/);
-  assert.match(page, /Isi seluruh sisa setoran/);
+  assert.doesNotMatch(page, /Isi seluruh sisa setoran/);
+  assert.match(page, /value={receiptVendor}/);
+  assert.match(page, /x\.destination === receiptVendor/);
+  assert.match(page, /<VariantMatrix values={matrix} onChange={updateQty} compact \/>/);
+  assert.match(css, /grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(page, /Lolos semua/);
   assert.match(css, /2026 visual refresh/);
   assert.match(css, /--green:\s*#2563eb/);
@@ -167,19 +181,19 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /MasterTablePanel/);
   assert.match(css, /\.master-data-table/);
   assert.match(page, /Tujuan QC masih dipakai vendor/);
-  assert.match(page, /Pilih bundle dalam surat jalan ini/);
+  assert.match(page, /Bundle yang dikirim/);
   assert.match(page, /bundleIds:\s*bundles\.map/);
   assert.match(page, /Template Sablon & Bordir/);
   assert.match(page, /decorationTemplates/);
-  assert.match(page, /Pekerjaan tambahan dari Cutting yang sama/);
+  assert.match(page, /Daftar pekerjaan sablon &amp; bordir/);
   assert.match(page, /decorationTemplateId/);
   assert.match(page, /remainingDecoration/);
   assert.match(page, /decorationRequiredBeforeBundle:\s*false/);
   assert.match(page, /decorationFinalStep:\s*false/);
-  assert.match(page, /Pekerjaan ini memakai Cutting sebagai referensi dan tidak menahan proses Bundle/);
+  assert.doesNotMatch(page, /Pekerjaan ini memakai Cutting sebagai referensi dan tidak menahan proses Bundle/);
   assert.match(page, /Jumlah pekerjaan tidak boleh melebihi jumlah fisik pada Cutting sumber/);
   assert.match(page, /Pekerjaan yang sama sudah tercatat sebagai/);
-  assert.match(page, /Pelaksana sablon\/bordir/);
+  assert.match(page, /Vendor pekerjaan utama/);
   assert.match(page, /function cuttingWorkflowStatus/);
   assert.match(page, /Di vendor dekorasi/);
   assert.match(page, /capabilities/);
@@ -251,7 +265,7 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /BYR-CUT/);
   assert.match(page, /Tarif cutting per unit/);
   assert.match(page, /Tagihan jasa cutting/);
-  assert.match(page, /REKAP PEMBAYARAN MINGGUAN/);
+  assert.match(page, /PEMBAYARAN TRANSAKSI/);
   assert.match(page, /Pembayaran Cutting/);
   assert.match(page, /Pembayaran QC/);
   assert.match(page, /nextWeeklyPaymentId/);
@@ -261,27 +275,28 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Simpan perubahan/);
   assert.match(page, /sudah memiliki pembayaran\. Vendor, jenis, dan tarif dikunci/);
   assert.match(page, /Pembayaran Vendor Jahit/);
-  assert.match(page, /Rekap gabungan/);
+  assert.match(page, /Pembayaran transaksi jahit/);
   assert.match(page, /payment.kind === "vendor"/);
   assert.match(page, /Tarif QC per unit/);
   assert.match(page, /paymentAmount/);
   assert.match(page, /Nominal pembayaran kali ini/);
-  assert.match(page, /function weeklyPaymentMatches/);
-  assert.match(page, /function weeklyPaidAmount/);
+  assert.match(page, /function allocatedWeeklyPaid/);
   assert.match(page, /function voidWeeklyPayment/);
   assert.match(page, /outstandingWeeklyGroups/);
-  assert.match(page, /Tidak ada tagihan belum lunas pada proses ini/);
+  assert.match(page, /Pembayaran dikelola di Laporan/);
+  assert.match(page, /Lihat pembayaran →/);
+  assert.match(page, /Catat pembayaran dari laporan/);
   assert.match(page, /onVoidWeeklyPayment/);
   assert.match(css, /\.weekly-period-control/);
   assert.match(page, /function rupiahInput/);
   assert.match(page, /function parseRupiahInput/);
   assert.match(page, /Laporan Operasional/);
   assert.match(page, /Laporan Keuangan/);
-  assert.match(page, /const navGroups/);
-  assert.match(page, /Master Data/);
-  assert.match(page, /Vendor & Gudang/);
-  assert.match(page, /label: "Laporan"/);
-  assert.match(page, /aria-expanded/);
+  assert.match(navigation, /export const navGroups/);
+  assert.match(navigation, /Master Data/);
+  assert.match(navigation, /Vendor & Gudang/);
+  assert.match(navigation, /label: "Laporan"/);
+  assert.match(sidebar, /aria-expanded/);
   assert.match(css, /\.nav-group-trigger/);
   assert.match(css, /\.nav-submenu/);
   assert.match(css, /\.nav-group\.expanded/);
@@ -293,6 +308,8 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /finance-ledger-table/);
   assert.match(page, /selectedReminder\(selectedFinanceRow, selectedFinanceCheckedWeeks\)/);
   assert.match(page, /Ajukan via WA/);
+  assert.match(page, /financePhone && selectedFinanceCheckedWeeks\.length > 0 \? <a/);
+  assert.doesNotMatch(page, /selectedFinanceCheckedWeeks\.length > 0 && selectedFinanceRow\.bankName && selectedFinanceRow\.accountNumber/);
   assert.match(page, /Periode rincian mingguan/);
   assert.match(page, /Pilih tunggakan/);
   assert.match(page, /Referensi Cutting belum tercatat/);
@@ -322,7 +339,7 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(css, /\.finance-report-print/);
   assert.match(page, /Rekap transaksi keuangan/);
   assert.match(page, /Daftar tagihan produksi/);
-  assert.match(page, /Buka pembayaran/);
+  assert.match(page, /Catat pembayaran dari laporan/);
   assert.match(page, /reportTab/);
   assert.match(css, /\.report-tabs/);
   assert.match(css, /\.finance-ledger-panel/);
@@ -342,12 +359,32 @@ test("production app has correct metadata and connected workflow", async () => {
   );
 });
 
+test("vendor receipt modal places variant details before payment", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const receiptVariant = page.indexOf(
+    '<VariantMatrix values={matrix} onChange={updateQty} compact />',
+  );
+  const receiptPayment = page.indexOf('className="receipt-payment-entry"');
+  assert.ok(receiptVariant >= 0, "receipt variant matrix should exist");
+  assert.ok(receiptPayment > receiptVariant, "vendor payment should follow variant details");
+});
+
+test("decoration form uses one unified job table without duplicate primary fields", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  assert.match(page, /decorationDraftsFromTemplates/);
+  assert.match(page, /Daftar pekerjaan sablon &amp; bordir/);
+  assert.match(page, /CUSTOM-\$\{Date\.now\(\)\}/);
+  assert.match(page, /Setiap pekerjaan tambahan harus memakai template yang berbeda/);
+  assert.doesNotMatch(page, /Template yang sudah dibuat tidak dapat dipilih lagi dari Cutting ini/);
+});
+
 test("persistent state is normalized without destructive reads and masters remain manageable", async () => {
-  const [route, database, packageJson, pageSource, css] = await Promise.all([
+  const [route, database, packageJson, pageSource, persistenceHook, css] = await Promise.all([
     readFile(new URL("app/api/state/route.ts", root), "utf8"),
     readFile(new URL("db/index.ts", root), "utf8"),
     readFile(new URL("package.json", root), "utf8"),
     readFile(new URL("app/page.tsx", root), "utf8"),
+    readFile(new URL("app/hooks/use-persistent-app-data.ts", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),
   ]);
   assert.match(route, /dataVersion: 3/);
@@ -364,16 +401,16 @@ test("persistent state is normalized without destructive reads and masters remai
   assert.match(route, /decorationRequiredBeforeBundle/);
   assert.match(route, /decorationFinalStep/);
   assert.match(route, /model\.decorationProcess === "both"[\s\S]*?: "both"/);
-  assert.match(pageSource, /const updatedAtRef = useRef/);
-  assert.match(pageSource, /updatedAt: updatedAtRef\.current \?\? next\.updatedAt/);
-  assert.match(pageSource, /updatedAtRef\.current = result\.updatedAt/);
-  assert.match(pageSource, /const saveInFlightRef = useRef\(false\)/);
+  assert.match(persistenceHook, /const updatedAtRef = useRef/);
+  assert.match(persistenceHook, /updatedAt: updatedAtRef\.current \?\? next\.updatedAt/);
+  assert.match(persistenceHook, /updatedAtRef\.current = normalized\.updatedAt/);
+  assert.match(persistenceHook, /const saveInFlightRef = useRef\(false\)/);
   assert.match(pageSource, /disabled=\{saving \|\| sum\(matrix\) <= 0\}/);
   assert.match(pageSource, /aria-busy=\{saving\}/);
   assert.match(pageSource, /Menyimpan\.\.\./);
   assert.match(pageSource, /function mergeConflictState/);
   assert.match(pageSource, /mergeChangedItems/);
-  assert.match(pageSource, /Data terbaru digabungkan dan transaksi berhasil disimpan/);
+  assert.match(persistenceHook, /Data terbaru digabungkan dan transaksi berhasil disimpan/);
   assert.match(pageSource, /className="form-modal matrix-modal"[\s\S]*?noValidate/);
   assert.match(pageSource, /Penerima QC belum tersedia\. Periksa Master QC/);
   assert.match(css, /\.toast\s*\{[\s\S]*?z-index:\s*200/);
@@ -402,10 +439,11 @@ test("persistent state is normalized without destructive reads and masters remai
   assert.match(route, /typeof vendor\.qcOfficer === "string"/);
   assert.match(route, /decorationProcess/);
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
-  assert.match(page, /Data berubah di perangkat atau tab lain/);
-  assert.match(page, /fetch\("\/api\/state", \{ cache: "no-store" \}\)/);
-  assert.match(page, /const latestResponse = await fetch/);
-  assert.match(page, /records: result\.records \?\? savedState\.records/);
+  assert.match(persistenceHook, /Data berubah di perangkat atau tab lain/);
+  assert.match(persistenceHook, /fetch\("\/api\/state", \{ cache: "no-store" \}\)/);
+  assert.match(persistenceHook, /const latestResponse = await fetch/);
+  assert.match(persistenceHook, /normalizeRef\.current\(\{ \.\.\.savedState, \.\.\.result \}\)/);
+  assert.match(page, /records: state\.records \?\? initial\.records/);
   assert.match(page, /children\("Karantina Reject", r\.id\)/);
   assert.match(page, /done = reworked && stocked && quarantined/);
   assert.match(page, /deleteModel/);

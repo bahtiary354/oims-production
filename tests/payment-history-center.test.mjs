@@ -5,15 +5,18 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 
 test("payment history is centralized without replacing its stored sources", async () => {
-  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const [page, navigation] = await Promise.all([
+    readFile(new URL("app/page.tsx", root), "utf8"),
+    readFile(new URL("app/lib/navigation.ts", root), "utf8"),
+  ]);
 
-  assert.match(page, /items:\s*\["Laporan Operasional",\s*"Laporan Keuangan",\s*"Riwayat Pembayaran"\]/);
+  assert.match(navigation, /items:\s*\["Laporan Operasional",\s*"Laporan Keuangan",\s*"Riwayat Pembayaran"\]/);
   assert.match(page, /function centralizedPaymentHistory\(data: AppData\)/);
   assert.match(page, /function PaymentHistoryReport\(/);
   assert.match(page, /data\.weeklyPayments/);
   assert.match(page, /legacyPayment\(receipt\)/);
   assert.match(page, /weeklyIds\.has\(payment\.id\)/);
-  assert.match(page, /active === "Riwayat Pembayaran"/);
+  assert.match(page, /<ModuleView name="Riwayat Pembayaran">/);
 
   assert.doesNotMatch(page, /<details className="completed-cuttings weekly-payment-history">/);
   assert.match(page, /false && <section className="finance-ledger-panel finance-history-panel"/);

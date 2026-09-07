@@ -14,15 +14,27 @@ test("surat jalan groups bundle sources by their cutting code", () => {
 test("multiple cutting sources open a detail drawer", () => {
   assert.match(source, /function DeliveryNoteSourceDrawer/);
   assert.match(source, /Lihat rincian →/);
-  assert.match(source, /SUMBER CUTTING/);
+  assert.match(source, /SUMBER SURAT JALAN/);
   assert.match(styles, /\.sj-source-drawer-table/);
 });
 
-test("printed surat jalan uses compact source fields and a grouped source table", () => {
-  assert.match(source, /sourceGroups\.length === 1/);
-  assert.match(source, /sourceGroups\.length > 1/);
-  assert.match(source, /className="print-source-table"/);
-  assert.match(styles, /\.print-source-table/);
+test("all printed surat jalan use the same compact two-row metadata", () => {
+  assert.match(source, /sourceGroups\.map\(\(group\) => group\.cuttingCode\)\.join\(", "\)/);
+  assert.match(source, /sourceGroups\.flatMap\(\(group\) => group\.bundleCodes\)\.join\(", "\)/);
+  assert.doesNotMatch(source, /className="print-source-table"/);
+  assert.match(styles, /\.delivery-note-document \.print-head\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  assert.match(styles, /\.delivery-note-document \.print-meta\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
+});
+
+test("vendor delivery note preserves and prints each bundle separately", () => {
+  assert.match(source, /bundleDetails\?: DeliveryNoteBundleDetail\[\]/);
+  assert.match(source, /bundleDetails: bundles\.map\(\(bundle\) =>/);
+  assert.match(source, /className="print-detail-table print-bundle-assignment-table"/);
+  assert.match(source, /<th>BUNDLE \/ LOT<\/th><th>WARNA<\/th><th>UKURAN &amp; JUMLAH<\/th><th>PENJAHIT<\/th><th>KETERANGAN<\/th>/);
+  assert.match(source, /className="print-handwriting-line"/);
+  assert.match(styles, /\.print-bundle-assignment-table/);
+  assert.match(styles, /print-color-adjust:\s*exact/);
+  assert.match(styles, /background:\s*#155448/);
 });
 
 test("surat jalan supports compact one, two, or three-copy A4 printing", () => {

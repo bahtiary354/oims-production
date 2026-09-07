@@ -14,7 +14,12 @@ test("all detail drawers share one vertical scroll contract", async () => {
   assert.match(css, /\.owner-drawer\s*\{[\s\S]*?height:\s*100dvh;[\s\S]*?overflow-y:\s*auto;/);
   assert.match(css, /\.owner-drawer\s*>\s*header\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*0;/);
   assert.match(css, /\.app-shell:has\(\.owner-drawer-backdrop\)\s+\.workspace\s*\{[\s\S]*?overflow-y:\s*hidden;/);
+  assert.match(page, /className="finance-ledger-drawer-body"/);
+  assert.match(css, /\.workspace \.finance-ledger-drawer-body\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?overflow-y:\s*auto;/);
   assert.match(css, /\.operational-variant-matrix-wrap,[\s\S]*?\.vendor-history-table-scroll[\s\S]*?overflow-x:\s*auto;/);
+  assert.match(css, /\.payment-history-drawer\s*>\s*:is\([\s\S]*?\.payment-history-detail-section[\s\S]*?flex:\s*none;[\s\S]*?height:\s*auto;/);
+  assert.match(css, /\.payment-history-drawer\s+\.summary-detail-table-wrap\s*\{[\s\S]*?height:\s*auto\s*!important;[\s\S]*?max-height:\s*none\s*!important;/);
+  assert.match(css, /\.payment-history-drawer\s+\.summary-detail-table-wrap\s*>\s*table\s*\{[\s\S]*?display:\s*table;[\s\S]*?height:\s*auto;/);
 
   const backdrops = page.match(/className="owner-drawer-backdrop(?:\s[^"]*)?"/g) ?? [];
   const drawers = page.match(/className="owner-drawer(?:\s[^"]*)?"/g) ?? [];
