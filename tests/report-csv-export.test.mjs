@@ -11,6 +11,9 @@ test("semua pusat laporan menyediakan ekspor CSV sesuai filter periode", () => {
   assert.match(page, /paymentRows\.filter\(\(payment\) => inPeriod\(payment\.date\)\)/);
   assert.match(page, /reportTab === "production" && <button type="button" onClick=\{exportOperationalCSV\}>Ekspor CSV<\/button>/);
   assert.match(page, /payment-history-export" onClick=\{exportCSV\}>Ekspor Excel\/CSV/);
+  assert.match(page, /report-header-actions"><button type="button" onClick=\{exportOperationalCSV\}>Ekspor CSV/);
+  assert.match(page, /report-header-actions"><button type="button" onClick=\{exportCSV\}>Ekspor CSV/);
+  assert.match(page, /onClick=\{exportFinanceCSV\}>Ekspor CSV/);
   assert.match(page, /<option value="custom">Custom<\/option>/);
   assert.match(page, /Tanggal mulai laporan operasional/);
   assert.match(page, /Tanggal selesai laporan operasional/);

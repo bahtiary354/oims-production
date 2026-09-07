@@ -9805,7 +9805,7 @@ function PaymentHistoryReport({
   return <div className="master-jacket-page master-data-page payment-history-page">
     <div className="page-title"><div><p className="overline">LAPORAN</p><h1>Riwayat Pembayaran</h1></div><button type="button" className="payment-history-export" onClick={exportCSV}>Ekspor Excel/CSV</button></div>
     <section className="finance-ledger-panel centralized-payment-history">
-      <header><div><h2>Rekap pembayaran dibukukan</h2></div><b>{filteredRows.length} data</b></header>
+      <header><div><h2>Rekap pembayaran dibukukan</h2></div><span className="report-header-actions"><button type="button" onClick={exportCSV}>Ekspor CSV</button><b>{filteredRows.length} data</b></span></header>
       <div className="finance-ledger-tools payment-history-toolbar">
         <label className="finance-ledger-search"><span>⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); resetPage(); }} placeholder="Cari nomor rekap atau pelaksana..." /></label>
         <div className="master-column-control finance-column-control"><button type="button" className="master-column-button" aria-expanded={columnMenu} onClick={() => setColumnMenu((open) => !open)}><span>▥</span> Kolom</button>{columnMenu && <div className="master-column-menu"><header><b>KOLOM</b><b>TAMPIL</b></header><label className="toggle-all"><span>Tampilkan semua</span><input type="checkbox" checked={visibleColumns.every(Boolean)} onChange={() => { const next = !visibleColumns.every(Boolean); setVisibleColumns(columns.map(() => next)); }} /></label>{columns.map((column, index) => <label key={column}><span>{column}</span><input type="checkbox" checked={visibleColumns[index]} onChange={() => setVisibleColumns((current) => current.map((visible, itemIndex) => itemIndex === index ? !visible : visible))} /></label>)}</div>}</div>
@@ -10458,7 +10458,7 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
       <section className="finance-ledger-panel">
         <header>
           <div><h2>Daftar tagihan produksi</h2></div>
-          <b>{filteredFinanceRows.length} data</b>
+          <span className="report-header-actions"><button type="button" onClick={() => setShowFinancePrint(true)}>Cetak</button><button type="button" onClick={exportFinanceCSV}>Ekspor CSV</button><b>{filteredFinanceRows.length} data</b></span>
         </header>
         <div className="finance-ledger-tools">
           <label className="finance-ledger-search"><span>⌕</span><input value={financeQuery} onChange={(e) => { setFinanceQuery(e.target.value); setFinancePage(1); }} placeholder="Cari penerima, rekening, atau status..." /></label>
@@ -10515,7 +10515,7 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
         <article><span>Total unit selesai</span><b>{operationalTotal}</b></article>
       </section>
       <section className="operational-ledger-panel">
-        <header><b>{operationalRows.length} data</b></header>
+        <header><span className="report-header-actions"><button type="button" onClick={exportOperationalCSV}>Ekspor CSV</button><b>{operationalRows.length} data</b></span></header>
         <div className="operational-ledger-tools">
           <label><span>⌕</span><input value={operationalQuery} onChange={(event) => { setOperationalQuery(event.target.value); setOperationalPage(1); }} placeholder="Cari kode, model, vendor, warna, atau ukuran..." /></label>
           <div className="master-column-control operational-column-control">

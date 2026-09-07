@@ -11035,6 +11035,39 @@ body {
   font-size: 11px;
 }
 
+.app-shell .workspace .report-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-shell .workspace .report-header-actions > button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #93b4fa;
+  border-radius: 8px;
+  background: #fff;
+  color: #2563eb;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.app-shell .workspace .report-header-actions > b {
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #2563eb;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .app-shell .workspace .report-header-actions { width: 100%; justify-content: flex-end; }
+  .app-shell .workspace .report-header-actions > button { flex: 1; }
+}
+
 .app-shell .workspace .operational-ledger-tools {
   display: grid;
   grid-template-columns: minmax(280px, 1fr) 230px;
