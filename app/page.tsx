@@ -412,16 +412,20 @@ function unifiedTransactionReference(
 function UnifiedTransactionReferenceCell({
   row,
   records,
+  compact = false,
 }: {
   row: RecordRow;
   records: Record<string, RecordRow[]>;
+  compact?: boolean;
 }) {
   const reference = unifiedTransactionReference(row, records);
+  const primaryLabel = row.stage === "Cutting" && compact ? "Order Produksi" : "Cutting";
+  const primaryValue = row.stage === "Cutting" && compact ? row.poId || "—" : reference.cutting;
   return (
     <span className="unified-transaction-reference">
-      <b>Cutting: {reference.cutting}</b>
+      <b>{primaryLabel}: {primaryValue}</b>
       <small>Bundle/Lot: {reference.bundle}</small>
-      <small>Sumber: {reference.source}</small>
+      {!compact && <small>Sumber: {reference.source}</small>}
     </span>
   );
 }
@@ -9893,7 +9897,7 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
   const [operationalPage, setOperationalPage] = useState(1);
   const [operationalPageSize, setOperationalPageSize] = useState(10);
   const [selectedOperationalRowId, setSelectedOperationalRowId] = useState<string | null>(null);
-  const operationalColumns = ["No.", "Tanggal", "Kode Transaksi", "Referensi", "Model", "Pelaksana / Tujuan", "Rincian Varian", "Jumlah", "Status"];
+  const operationalColumns = ["No.", "Tanggal", "Kode Transaksi", "Asal Produksi", "Model", "Pelaksana / Tujuan", "Rincian Varian", "Jumlah", "Status"];
   const [operationalColumnMenu, setOperationalColumnMenu] = useState(false);
   const [visibleOperationalColumns, setVisibleOperationalColumns] = useState(() => operationalColumns.map(() => true));
   const [financePICCode, setFinancePICCode] = useState(
@@ -10488,7 +10492,7 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
                 {visibleOperationalColumns[0] && <td data-label="No.">{(safeOperationalPage - 1) * operationalPageSize + index + 1}</td>}
                 {visibleOperationalColumns[1] && <td data-label="Tanggal">{row.date}</td>}
                 {visibleOperationalColumns[2] && <td data-label="Kode Transaksi"><b>{row.id}</b></td>}
-                {visibleOperationalColumns[3] && <td data-label="Referensi"><UnifiedTransactionReferenceCell row={row} records={data.records} /></td>}
+                {visibleOperationalColumns[3] && <td data-label="Asal Produksi"><UnifiedTransactionReferenceCell row={row} records={data.records} compact /></td>}
                 {visibleOperationalColumns[4] && <td data-label="Model"><span><b>{row.modelName}</b><small>{row.modelCode}</small></span></td>}
                 {visibleOperationalColumns[5] && <td data-label="Pelaksana / Tujuan">{party}</td>}
                 {visibleOperationalColumns[6] && <td data-label="Rincian Varian"><button type="button" className="operational-variant-trigger" onClick={() => setSelectedOperationalRowId(row.id)}><span><b>{colorCount} warna</b><small>{sizeCount} ukuran · {row.variants.length} varian</small></span><em>Lihat rincian →</em></button></td>}

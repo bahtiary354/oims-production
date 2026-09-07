@@ -38,9 +38,11 @@ test("persediaan tidak menampilkan ulang bagian transaksi selesai", () => {
 
 test("mutasi dan laporan operasional memakai referensi transaksi yang sama", () => {
   assert.match(page, /function unifiedTransactionReference\(/);
-  assert.match(page, /Cutting: \{reference\.cutting\}/);
+  assert.match(page, /primaryLabel = row\.stage === "Cutting" && compact \? "Order Produksi" : "Cutting"/);
   assert.match(page, /Bundle\/Lot: \{reference\.bundle\}/);
-  assert.match(page, /Sumber: \{reference\.source\}/);
+  assert.match(page, /!compact && <small>Sumber: \{reference\.source\}<\/small>/);
+  assert.match(page, /"Asal Produksi"/);
+  assert.match(page, /records=\{data\.records\} compact/);
   const usages = page.match(/<UnifiedTransactionReferenceCell row=\{row\}/g) ?? [];
   assert.equal(usages.length, 2);
 });

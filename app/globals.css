@@ -11146,6 +11146,19 @@ body {
   display: block;
 }
 
+.app-shell .workspace .operational-ledger-table .unified-transaction-reference {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.app-shell .workspace .operational-ledger-table .unified-transaction-reference :is(b, small) {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .app-shell .workspace .operational-ledger-table td b {
   color: #1e293b;
   font-weight: 700;
@@ -11160,8 +11173,8 @@ body {
 .app-shell .workspace .operational-ledger-table :is(th, td):nth-child(1) { width: 52px; }
 .app-shell .workspace .operational-ledger-table :is(th, td):nth-child(2) { width: 100px; }
 .app-shell .workspace .operational-ledger-table :is(th, td):nth-child(3) { width: 180px; }
-.app-shell .workspace .operational-ledger-table :is(th, td):nth-child(4) { width: 160px; }
-.app-shell .workspace .operational-ledger-table :is(th, td):nth-child(5) { width: 135px; }
+.app-shell .workspace .operational-ledger-table :is(th, td):nth-child(4) { width: 210px; }
+.app-shell .workspace .operational-ledger-table :is(th, td):nth-child(5) { width: 145px; }
 .app-shell .workspace .operational-ledger-table :is(th, td):nth-child(6) { width: 150px; }
 .app-shell .workspace .operational-ledger-table :is(th, td):nth-child(7) { width: 190px; }
 .app-shell .workspace .operational-ledger-table :is(th, td):nth-child(8) { width: 80px; }
