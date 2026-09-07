@@ -9798,7 +9798,7 @@ function PaymentHistoryReport({
         url = URL.createObjectURL(new Blob([`\uFEFF${body}`], { type: "text/csv;charset=utf-8" })),
         link = document.createElement("a");
       link.href = url;
-      link.download = `riwayat-pembayaran-oims-${localDateString(new Date())}.csv`;
+      link.download = `riwayat-pembayaran-oims-${startDate || "semua"}-${endDate || "waktu"}.csv`;
       link.click();
       URL.revokeObjectURL(url);
     };
@@ -10385,17 +10385,53 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
       [],
       ["DAFTAR TUJUAN TRANSFER"],
       ["Jenis", "Penerima", "Bank", "Nomor rekening", "Atas nama", "Nominal transfer"],
-      ...transferRows.map((row) => [row.type, row.payee, row.bankName || "Belum diisi", row.accountNumber || "Belum diisi", row.accountHolder || row.payee, row.remaining]),
+      ...filteredFinanceRows.map((row) => [row.type, row.payee, row.bankName || "Belum diisi", row.accountNumber || "Belum diisi", row.accountHolder || row.payee, row.remaining]),
       [],
       ["RIWAYAT PEMBAYARAN"],
       ["Tanggal", "Nomor bukti", "Jenis", "Penerima", "Nominal", "Status"],
-      ...paymentRows.map((payment) => [payment.date, payment.id, payment.type, payment.payee, payment.amount, payment.status]),
+      ...paymentRows.filter((payment) => inPeriod(payment.date)).map((payment) => [payment.date, payment.id, payment.type, payment.payee, payment.amount, payment.status]),
     ];
     const content = `\uFEFF${csvRows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(";")).join("\n")}`,
       url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" })),
       link = document.createElement("a");
     link.href = url;
     link.download = `laporan-pembayaran-oims-${rangeStart || "semua"}-${rangeEnd || "waktu"}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+  function exportOperationalCSV() {
+    const csvRows: Array<Array<string | number>> = [
+      ["LAPORAN OPERASIONAL OIMS"],
+      ["Proses", operationalProcess],
+      ["Periode", periodLabel],
+      [],
+      ["No.", "Tanggal", "Kode transaksi", "Cutting", "Bundle/Lot", "Sumber", "Model", "Kode model", "Pelaksana/Tujuan", "Warna", "Ukuran", "Jumlah", "Total transaksi", "Status"],
+      ...operationalRows.flatMap((row, rowIndex) => {
+        const reference = unifiedTransactionReference(row, data.records),
+          party = row.destination || row.originVendor || row.qcOfficer || row.officer || "—";
+        return row.variants.map((variant, variantIndex) => [
+          variantIndex === 0 ? rowIndex + 1 : "",
+          row.date,
+          row.id,
+          reference.cutting,
+          reference.bundle,
+          reference.source,
+          row.modelName,
+          row.modelCode,
+          party,
+          variant.color,
+          variant.size,
+          variant.qty,
+          variantIndex === 0 ? reportRowUnits(row) : "",
+          "Selesai",
+        ]);
+      }),
+    ];
+    const content = `\uFEFF${csvRows.map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(";")).join("\n")}`,
+      url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" })),
+      link = document.createElement("a");
+    link.href = url;
+    link.download = `laporan-operasional-${operationalProcess.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}-${rangeStart || "semua"}-${rangeEnd || "waktu"}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -10410,6 +10446,7 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
           {reportTab === "payment" && <>
           <button type="button" onClick={() => setShowFinancePrint(true)}>Cetak</button><button type="button" onClick={exportFinanceCSV}>Ekspor CSV</button>
           </>}
+          {reportTab === "production" && <button type="button" onClick={exportOperationalCSV}>Ekspor CSV</button>}
         </div>
       </div>
       {reportTab === "payment" && <>
@@ -10426,8 +10463,10 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
         <div className="finance-ledger-tools">
           <label className="finance-ledger-search"><span>⌕</span><input value={financeQuery} onChange={(e) => { setFinanceQuery(e.target.value); setFinancePage(1); }} placeholder="Cari penerima, rekening, atau status..." /></label>
           <div className="master-column-control finance-column-control"><button type="button" className="master-column-button" aria-expanded={financeColumnMenu} onClick={() => setFinanceColumnMenu((open) => !open)}><span>▥</span> Kolom</button>{financeColumnMenu && <div className="master-column-menu"><header><b>KOLOM</b><b>TAMPIL</b></header><label className="toggle-all"><span>Tampilkan semua</span><input type="checkbox" checked={visibleFinanceColumns.every(Boolean)} onChange={() => { const next = !visibleFinanceColumns.every(Boolean); setVisibleFinanceColumns(financeColumns.map(() => next)); }} /></label>{financeColumns.map((column, index) => <label key={column}><span>{column}</span><input type="checkbox" checked={visibleFinanceColumns[index]} onChange={() => setVisibleFinanceColumns((current) => current.map((visible, itemIndex) => itemIndex === index ? !visible : visible))} /></label>)}</div>}</div>
+          <select value={financePeriod} onChange={(event) => { setFinancePeriod(event.target.value as typeof financePeriod); setFinancePage(1); }} aria-label="Periode laporan keuangan"><option value="today">Hari ini</option><option value="week">Minggu ini</option><option value="month">Bulan ini</option><option value="custom">Custom</option><option value="all">Maksimal</option></select>
           <select value={financeKind} onChange={(e) => { setFinanceKind(e.target.value as typeof financeKind); setFinancePage(1); }}><option value="all">Semua proses</option><option value="Cutting">Cutting</option><option value="Vendor jahit">Vendor jahit</option><option value="Sablon/Bordir">Sablon/Bordir</option><option value="Quality Control">Quality Control</option></select>
           <select value={financeStatusFilter} onChange={(event) => { setFinanceStatusFilter(event.target.value as typeof financeStatusFilter); setFinancePage(1); }} aria-label="Status tagihan"><option value="outstanding">Tagihan aktif</option><option value="all">Semua status</option><option value="unpaid">Belum dibayar</option><option value="partial">DP sebagian</option><option value="paid">Lunas</option></select>
+          {financePeriod === "custom" && <div className="finance-toolbar-custom-range"><input aria-label="Tanggal mulai laporan keuangan" type="date" value={customStart} max={customEnd} onChange={(event) => { setCustomStart(event.target.value); setFinancePage(1); }} /><span>–</span><input aria-label="Tanggal selesai laporan keuangan" type="date" value={customEnd} min={customStart} onChange={(event) => { setCustomEnd(event.target.value); setFinancePage(1); }} /></div>}
         </div>
         {filteredFinanceRows.length === 0 ? <div className="finance-transfer-empty"><b>Belum ada data yang sesuai</b><span>Ubah pencarian, filter, atau periode laporan.</span></div> : <>
           <div className="finance-ledger-table-wrap"><table className={`finance-ledger-table ${financeHiddenClasses}`}><thead><tr><th>No.</th><th>Jenis</th><th>Penerima</th><th>Periode</th><th>Tagihan</th><th>Dibayar</th><th>Sisa</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{pagedFinanceRows.map((row, index) => {
