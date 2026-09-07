@@ -7,7 +7,7 @@ const page = fs.readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8"
 test("halaman persediaan menyediakan aksi penerimaan hasil QC", () => {
   assert.match(page, /pendingStockSources=\{/);
   assert.match(page, /sourceAvailable\(active, source\)/);
-  assert.match(page, /\+ Terima hasil QC/);
+  assert.match(page, /\+ Stock/);
   assert.match(page, /onClick=\{onReceive\}/);
   assert.match(page, /disabled=\{pendingSources\.length === 0\}/);
 });

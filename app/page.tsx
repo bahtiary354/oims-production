@@ -8386,30 +8386,11 @@ function StockInventoryPanel({
   const visibleRows = filteredRows.slice((safePage - 1) * pageSize, safePage * pageSize);
   const totalStock = groupedRows.reduce((total, row) => total + row.total, 0);
   const totalVariants = new Set(groupedRows.flatMap((row) => row.variants.map((variant) => `${row.modelCode}|${variant.color}|${variant.size}`))).size;
-  const pendingUnits = pendingSources.reduce(
-    (total, row) =>
-      total +
-      (row.qcDetails ?? []).reduce(
-        (subtotal, detail) => subtotal + detail.passed,
-        0,
-      ),
-    0,
-  );
-
   return (
     <div className="stock-inventory-page">
       <section className="stock-receipt-toolbar" aria-label="Penerimaan hasil Quality Control">
-        <div>
-          <span>Penerimaan hasil QC</span>
-          <b>{pendingSources.length} transaksi · {pendingUnits} unit siap masuk stok</b>
-          <small>
-            {pendingSources.length > 0
-              ? "Pilih hasil QC yang sudah lolos untuk dibukukan ke stok barang jadi."
-              : "Belum ada hasil QC baru yang siap dibukukan ke persediaan."}
-          </small>
-        </div>
         <button type="button" onClick={onReceive} disabled={pendingSources.length === 0}>
-          + Terima hasil QC
+          + Stock
         </button>
       </section>
       <section className="stock-summary-cards" aria-label="Ringkasan persediaan">

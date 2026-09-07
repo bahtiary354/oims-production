@@ -364,11 +364,7 @@
 }
 
 .stock-inventory-page { display: grid; gap: 1.25rem; }
-.stock-receipt-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1.25rem; padding: 1.25rem 1.5rem; border: 1px solid #cbdcfb; border-radius: 1rem; background: #f5f8ff; }
-.stock-receipt-toolbar > div { display: grid; gap: .3rem; min-width: 0; }
-.stock-receipt-toolbar span { color: #2563eb; font-size: .76rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.stock-receipt-toolbar b { color: #172033; font-size: 1.05rem; }
-.stock-receipt-toolbar small { color: #68768b; }
+.stock-receipt-toolbar { display: flex; justify-content: flex-end; }
 .stock-receipt-toolbar button { min-height: 3rem; padding: .75rem 1.15rem; border: 1px solid #2563eb; border-radius: .75rem; color: #fff; background: #2563eb; font: inherit; font-weight: 800; white-space: nowrap; cursor: pointer; }
 .stock-receipt-toolbar button:disabled { border-color: #cbd5e1; color: #94a3b8; background: #e2e8f0; cursor: not-allowed; }
 .stock-summary-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
@@ -394,7 +390,7 @@
 .stock-ledger-table td small { display: block; margin-top: .25rem; color: #8792a2; }
 .stock-detail-button { border: 0; color: #2460df; background: transparent; font-weight: 800; white-space: nowrap; }
 @media (max-width: 900px) { .stock-summary-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 560px) { .stock-receipt-toolbar { align-items: stretch; flex-direction: column; padding: 1rem; } .stock-receipt-toolbar button { width: 100%; } .stock-summary-cards { grid-template-columns: 1fr 1fr; gap: .65rem; } .stock-summary-cards article { padding: 1rem; } .stock-summary-cards b { font-size: 1.6rem; } .stock-ledger-panel > header { align-items: flex-start; padding: 1rem; } .stock-ledger-panel > header span { font-size: .85rem; } .stock-ledger-tabs, .stock-ledger-tools { padding-left: 1rem; padding-right: 1rem; } }
+@media (max-width: 560px) { .stock-receipt-toolbar button { width: 100%; } .stock-summary-cards { grid-template-columns: 1fr 1fr; gap: .65rem; } .stock-summary-cards article { padding: 1rem; } .stock-summary-cards b { font-size: 1.6rem; } .stock-ledger-panel > header { align-items: flex-start; padding: 1rem; } .stock-ledger-panel > header span { font-size: .85rem; } .stock-ledger-tabs, .stock-ledger-tools { padding-left: 1rem; padding-right: 1rem; } }
 
 .app-shell .workspace .analytics-data-page > .page-title {
   margin: 0 0 18px !important;
