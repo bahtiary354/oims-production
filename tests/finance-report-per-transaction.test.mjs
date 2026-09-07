@@ -33,3 +33,17 @@ test("central payment history splits a payment document into transaction rows", 
   assert.match(page, /"Kode transaksi"/);
   assert.match(page, /row\.lines\[0\]\?\.recordId/);
 });
+
+test("finance report can combine compatible transactions without merging their balances", async () => {
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+  assert.match(page, /const \[financePayee, setFinancePayee\] = useState\("all"\)/);
+  assert.match(page, /const \[selectedFinanceTransactions, setSelectedFinanceTransactions\] = useState<string\[\]>\(\[\]\)/);
+  assert.match(page, /row\.type === selectedFinanceAnchor\.type/);
+  assert.match(page, /row\.payee === selectedFinanceAnchor\.payee/);
+  assert.match(page, /row\.accountNumber === selectedFinanceAnchor\.accountNumber/);
+  assert.match(page, /row\.accountHolder === selectedFinanceAnchor\.accountHolder/);
+  assert.match(page, /Bayar gabungan/);
+  assert.match(page, /paymentAmount: usesAllocations/);
+  assert.match(page, /weeklyAllocations\[receipt\.id\]/);
+});

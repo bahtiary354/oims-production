@@ -52,14 +52,11 @@ test("implementasi menjaga saldo per transaksi dan mendukung bukti gabungan satu
     pageSource,
     /const paymentGroupKey = row\.id/,
   );
-  assert.match(
-    pageSource,
-    /weeklyDraft\.rows\.length !== 1 && weeklyDraft\.kind !== "decoration"/,
-  );
+  assert.match(pageSource, /const usesAllocations = weeklyDraft\.rows\.length > 1 \|\| weeklyDraft\.kind === "decoration"/);
   assert.match(pageSource, /createPaymentFromReport/);
   assert.match(pageSource, /Catat pembayaran dari laporan/);
   assert.match(pageSource, /const allocation = weeklyAllocations\[receipt\.id\] \?\? 0/);
-  assert.match(pageSource, /Pembayaran gabungan hanya dapat dibuat untuk satu vendor yang sama/);
+  assert.match(pageSource, /row\.payee === selectedFinanceAnchor\.payee/);
   assert.match(pageSource, /Alokasi setiap transaksi harus lebih dari nol dan tidak melebihi sisa tagihannya/);
   assert.match(pageSource, /amount: allocation/);
   assert.match(

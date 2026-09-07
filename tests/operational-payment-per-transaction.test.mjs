@@ -23,10 +23,10 @@ test("transaksi vendor yang sama tidak digabung dan nomor tetap berurutan", () =
   assert.equal(active[0].units * active[0].rate - active[0].paid, 150_000);
 });
 
-test("kode menjaga saldo per ID dan membatasi gabungan hanya untuk dekorasi", () => {
+test("kode menjaga saldo per ID saat beberapa transaksi digabung", () => {
   assert.match(pageSource, /const paymentGroupKey = row\.id/);
-  assert.match(pageSource, /weeklyDraft\.rows\.length !== 1 && weeklyDraft\.kind !== "decoration"/);
-  assert.match(pageSource, /Pembayaran gabungan hanya dapat dibuat untuk satu vendor yang sama/);
+  assert.match(pageSource, /const usesAllocations = weeklyDraft\.rows\.length > 1 \|\| weeklyDraft\.kind === "decoration"/);
+  assert.match(pageSource, /paymentAmount: usesAllocations/);
   assert.match(
     pageSource,
     /new Set\(weeklyDraft\.rows\.map\(\(row\) => row\.id\)\)/,

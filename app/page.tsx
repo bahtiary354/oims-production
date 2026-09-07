@@ -2697,13 +2697,7 @@ export default function Home() {
     periodStart: string,
     periodEnd: string,
   ) {
-    if (kind === "decoration") {
-      const vendors = new Set(rows.map((row) => row.destination).filter(Boolean));
-      if (vendors.size !== 1 || !vendors.has(payee)) {
-        flash("Pembayaran gabungan hanya dapat dibuat untuk satu vendor yang sama.");
-        return;
-      }
-    }
+    if (!rows.length) return;
     setWeeklyDraft({
       kind,
       payee,
@@ -2726,7 +2720,13 @@ export default function Home() {
     );
     setWeeklyNote("");
     setWeeklyAmount(0);
-    setWeeklyAllocations(Object.fromEntries(rows.map((row) => [row.id, 0])));
+    setWeeklyAllocations(Object.fromEntries(rows.map((row) => {
+      const rate = kind === "cutting" ? row.cuttingRate ?? 0 : kind === "qc" ? row.qcRate ?? 0 : kind === "decoration" ? row.decorationRate ?? 0 : row.sewingRate ?? 0,
+        paid = kind === "vendor" || kind === "decoration"
+          ? paidForReceipt(row)
+          : allocatedWeeklyPaid(data.weeklyPayments, kind, new Set([row.id])) + (kind === "cutting" ? paidForReceipt(row) : 0);
+      return [row.id, Math.max(0, row.total * rate - paid)];
+    })));
   }
   async function saveWeeklyPayment(e: FormEvent) {
     e.preventDefault();
@@ -2738,10 +2738,7 @@ export default function Home() {
       isSaveInFlight()
     )
       return;
-    if (weeklyDraft.rows.length !== 1 && weeklyDraft.kind !== "decoration") {
-      flash("Pembayaran harus dicatat untuk satu transaksi pekerjaan.");
-      return;
-    }
+    const usesAllocations = weeklyDraft.rows.length > 1 || weeklyDraft.kind === "decoration";
     const lines = weeklyDraft.rows.map((row) => {
         const rate =
           weeklyDraft.kind === "cutting"
@@ -2757,7 +2754,7 @@ export default function Home() {
           units: row.total,
           rate,
           amount: row.total * rate,
-          paymentAmount: weeklyDraft.kind === "decoration"
+          paymentAmount: usesAllocations
             ? weeklyAllocations[row.id] ?? 0
             : undefined,
         };
@@ -2779,11 +2776,15 @@ export default function Home() {
         ) + (weeklyDraft.kind === "cutting"
           ? weeklyDraft.rows.reduce((total, row) => total + paidForReceipt(row), 0)
           : 0);
-    const effectivePaymentAmount = weeklyDraft.kind === "decoration"
+    const effectivePaymentAmount = usesAllocations
       ? lines.reduce((total, line) => total + (line.paymentAmount ?? 0), 0)
       : weeklyAmount;
-    if (weeklyDraft.kind === "decoration" && lines.some((line, index) => {
-      const remaining = Math.max(0, line.amount - paidForReceipt(weeklyDraft.rows[index]));
+    if (usesAllocations && lines.some((line, index) => {
+      const row = weeklyDraft.rows[index],
+        paid = weeklyDraft.kind === "vendor" || weeklyDraft.kind === "decoration"
+          ? paidForReceipt(row)
+          : allocatedWeeklyPaid(data.weeklyPayments, weeklyDraft.kind, new Set([row.id])) + (weeklyDraft.kind === "cutting" ? paidForReceipt(row) : 0),
+        remaining = Math.max(0, line.amount - paid);
       return (line.paymentAmount ?? 0) <= 0 || (line.paymentAmount ?? 0) > remaining;
     })) {
       flash("Alokasi setiap transaksi harus lebih dari nol dan tidak melebihi sisa tagihannya.");
@@ -2859,19 +2860,17 @@ export default function Home() {
         ),
       };
     } else if (weeklyDraft.kind === "vendor") {
-      let amountLeft = weeklyAmount;
       nextData.records = {
         ...data.records,
         "Penerimaan Gudang": (data.records["Penerimaan Gudang"] ?? []).map(
           (receipt) => {
             const draftRow = weeklyDraft.rows.find((row) => row.id === receipt.id);
-            if (!draftRow || amountLeft <= 0) return receipt;
+            if (!draftRow) return receipt;
             const rate = draftRow.sewingRate ?? 0,
               bill = receipt.total * rate,
               paid = paidForReceipt(receipt),
-              allocation = Math.min(Math.max(0, bill - paid), amountLeft);
+              allocation = usesAllocations ? weeklyAllocations[receipt.id] ?? 0 : Math.min(Math.max(0, bill - paid), weeklyAmount);
             if (allocation <= 0) return receipt;
-            amountLeft -= allocation;
             return {
               ...receipt,
               paidAmount: paid + allocation,
@@ -6583,7 +6582,8 @@ export default function Home() {
         </div>
       )}
       {weeklyDraft && (() => {
-        const lines = weeklyDraft.rows.map((row) => {
+        const usesAllocations = weeklyDraft.rows.length > 1 || weeklyDraft.kind === "decoration",
+          lines = weeklyDraft.rows.map((row) => {
             const rate = weeklyDraft.kind === "cutting"
               ? row.cuttingRate ?? 0
               : weeklyDraft.kind === "qc"
@@ -6608,7 +6608,7 @@ export default function Home() {
                 ? weeklyDraft.rows.reduce((total, row) => total + paidForReceipt(row), 0)
                 : 0),
           remainingBefore = Math.max(0, totalAmount - paidBefore),
-          allocatedNow = weeklyDraft.kind === "decoration"
+          allocatedNow = usesAllocations
             ? weeklyDraft.rows.reduce((total, row) => total + (weeklyAllocations[row.id] ?? 0), 0)
             : weeklyAmount,
           remainingAfter = Math.max(0, remainingBefore - allocatedNow),
@@ -6629,7 +6629,7 @@ export default function Home() {
               </div>
               <div className="weekly-payment-lines modal-lines">
                 {lines.map(({ row, rate, amount }) => (
-                  <p key={row.id}><span><b>{row.id}</b><small>{row.modelName} · {row.total} unit × {rupiah(rate)} · sisa {rupiah(Math.max(0, amount - paidForReceipt(row)))}</small></span>{weeklyDraft.kind === "decoration" ? <input aria-label={`Alokasi ${row.id}`} type="text" inputMode="numeric" value={rupiahInput(weeklyAllocations[row.id] ?? 0)} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setWeeklyAllocations((current) => ({ ...current, [row.id]: parseRupiahInput(event.target.value) }))} /> : <strong>{rupiah(amount)}</strong>}</p>
+                  <p key={row.id}><span><b>{row.id}</b><small>{row.modelName} · {row.total} unit × {rupiah(rate)} · tagihan {rupiah(amount)}</small></span>{usesAllocations ? <input aria-label={`Alokasi ${row.id}`} type="text" inputMode="numeric" value={rupiahInput(weeklyAllocations[row.id] ?? 0)} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setWeeklyAllocations((current) => ({ ...current, [row.id]: parseRupiahInput(event.target.value) }))} /> : <strong>{rupiah(amount)}</strong>}</p>
                 ))}
               </div>
               <div className="payment-modal-status">
@@ -6641,12 +6641,12 @@ export default function Home() {
                 <p><span>Status setelah bayar</span><b>{statusAfter}</b></p>
               </div>
               <div className="field-grid">
-                {weeklyDraft.kind !== "decoration" && <label className="full">
+                {!usesAllocations && <label className="full">
                   Nominal pembayaran kali ini
                   <input required type="text" inputMode="numeric" value={rupiahInput(weeklyAmount)} onFocus={(e) => e.currentTarget.select()} onChange={(e) => setWeeklyAmount(parseRupiahInput(e.target.value))} />
                   <small>Sisa setelah pembayaran: {rupiah(remainingAfter)}</small>
                 </label>}
-                {weeklyDraft.kind === "decoration" && <div className="full payment-allocation-total"><span>Total alokasi pembayaran</span><b>{rupiah(allocatedNow)}</b></div>}
+                {usesAllocations && <div className="full payment-allocation-total"><span>Total pembayaran gabungan</span><b>{rupiah(allocatedNow)}</b></div>}
                 <label>
                   Tanggal pembayaran
                   <input required type="date" value={weeklyPaymentDate} onChange={(e) => setWeeklyPaymentDate(e.target.value)} />
@@ -9864,7 +9864,9 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
   const [showFinancePrint, setShowFinancePrint] = useState(false);
   const [financeQuery, setFinanceQuery] = useState("");
   const [financeKind, setFinanceKind] = useState<"all" | "Cutting" | "Vendor jahit" | "Sablon/Bordir" | "Quality Control">("all");
+  const [financePayee, setFinancePayee] = useState("all");
   const [financeStatusFilter, setFinanceStatusFilter] = useState<"outstanding" | "all" | "unpaid" | "partial" | "paid">("outstanding");
+  const [selectedFinanceTransactions, setSelectedFinanceTransactions] = useState<string[]>([]);
   const [financePage, setFinancePage] = useState(1);
   const [financePageSize, setFinancePageSize] = useState(10);
   const [expandedFinanceRow, setExpandedFinanceRow] = useState<string | null>(null);
@@ -10132,7 +10134,7 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
         matchesKind = financeKind === "all" || row.type === financeKind,
         matchesStatus = financeStatusFilter === "all" || (financeStatusFilter === "outstanding" ? row.remaining > 0 : financeStatusFilter === "paid" ? row.status === "Lunas" : financeStatusFilter === "partial" ? row.status === "DP sebagian" : row.status === "Belum dibayar"),
         matchesQuery = !query || [row.transactionId, row.type, row.payee, row.bankName, row.accountNumber, row.accountHolder, row.status].join(" ").toLowerCase().includes(query);
-      return matchesKind && matchesStatus && matchesQuery;
+      return matchesKind && matchesStatus && matchesQuery && (financePayee === "all" || row.payee === financePayee);
     }),
     financePageCount = Math.max(1, Math.ceil(filteredFinanceRows.length / financePageSize)),
     safeFinancePage = Math.min(financePage, financePageCount),
@@ -10142,6 +10144,13 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
     selectedFinanceOutstandingWeeks = selectedFinanceVisibleWeeks.filter((weekRow) => weekRow.remaining > 0),
     selectedFinanceCheckedWeeks = selectedFinanceVisibleWeeks.filter((weekRow) => selectedFinanceWeeks.includes(weekRow.key)),
     selectedFinanceAllOutstanding = selectedFinanceOutstandingWeeks.length > 0 && selectedFinanceOutstandingWeeks.every((weekRow) => selectedFinanceWeeks.includes(weekRow.key)),
+    financePayeeOptions = [...new Set(financeLedgerRows.map((row) => row.payee))].sort(),
+    selectedFinanceTransactionRows = financeLedgerRows.filter((row) => selectedFinanceTransactions.includes(row.key)),
+    selectedFinanceAnchor = selectedFinanceTransactionRows[0],
+    financeBulkCompatible = (row: (typeof financeLedgerRows)[number]) => !selectedFinanceAnchor || (
+      row.type === selectedFinanceAnchor.type && row.payee === selectedFinanceAnchor.payee && row.bankName === selectedFinanceAnchor.bankName && row.accountNumber === selectedFinanceAnchor.accountNumber && row.accountHolder === selectedFinanceAnchor.accountHolder
+    ),
+    selectedFinanceBulkTotal = selectedFinanceTransactionRows.reduce((total, row) => total + row.remaining, 0),
     financeHiddenClasses = visibleFinanceColumns.map((visible, index) => visible ? "" : `hide-finance-col-${index + 1}`).filter(Boolean).join(" ");
   const childrenOf = (stage: string, sourceId: string) => (data.records[stage] ?? []).filter((row) => row.sourceId === sourceId),
     balanceAfter = (row: RecordRow, childStage: string) => sum(subtractVariants(row.variants, childrenOf(childStage, row.id).flatMap((child) => child.variants))),
@@ -10254,6 +10263,14 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
         ? selected.filter((item) => item !== key)
         : [...selected, key],
     );
+  const toggleFinanceTransaction = (row: (typeof financeLedgerRows)[number]) => {
+    if (row.remaining <= 0) return;
+    setSelectedFinanceTransactions((selected) => {
+      if (selected.includes(row.key)) return selected.filter((key) => key !== row.key);
+      if (!financeBulkCompatible(row)) return selected;
+      return [...selected, row.key];
+    });
+  };
   const financeVariantSummary = (record?: RecordRow) => {
       if (!record) return "Rincian varian tidak tersedia";
       const grouped = new Map<string, string[]>();
@@ -10276,6 +10293,7 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
       kind: WeeklyPaymentKind = row.type === "Cutting" ? "cutting" : row.type === "Vendor jahit" ? "vendor" : row.type === "Sablon/Bordir" ? "decoration" : "qc",
       dates = selectedWeeks.flatMap((week) => [week.start, week.end]).sort();
     setExpandedFinanceRow(null);
+    setSelectedFinanceTransactions([]);
     onCreatePayment(kind, row.payee, uniqueRecords, dates[0] ?? today, dates.at(-1) ?? today);
   };
   const selectedReminder = (
@@ -10435,14 +10453,16 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
           <div className="master-column-control finance-column-control"><button type="button" className="master-column-button" aria-expanded={financeColumnMenu} onClick={() => setFinanceColumnMenu((open) => !open)}><span>▥</span> Kolom</button>{financeColumnMenu && <div className="master-column-menu"><header><b>KOLOM</b><b>TAMPIL</b></header><label className="toggle-all"><span>Tampilkan semua</span><input type="checkbox" checked={visibleFinanceColumns.every(Boolean)} onChange={() => { const next = !visibleFinanceColumns.every(Boolean); setVisibleFinanceColumns(financeColumns.map(() => next)); }} /></label>{financeColumns.map((column, index) => <label key={column}><span>{column}</span><input type="checkbox" checked={visibleFinanceColumns[index]} onChange={() => setVisibleFinanceColumns((current) => current.map((visible, itemIndex) => itemIndex === index ? !visible : visible))} /></label>)}</div>}</div>
           <select value={financePeriod} onChange={(event) => { setFinancePeriod(event.target.value as typeof financePeriod); setFinancePage(1); }} aria-label="Periode laporan keuangan"><option value="today">Hari ini</option><option value="week">Minggu ini</option><option value="month">Bulan ini</option><option value="custom">Custom</option><option value="all">Maksimal</option></select>
           <select value={financeKind} onChange={(e) => { setFinanceKind(e.target.value as typeof financeKind); setFinancePage(1); }}><option value="all">Semua proses</option><option value="Cutting">Cutting</option><option value="Vendor jahit">Vendor jahit</option><option value="Sablon/Bordir">Sablon/Bordir</option><option value="Quality Control">Quality Control</option></select>
+          <select value={financePayee} onChange={(event) => { setFinancePayee(event.target.value); setFinancePage(1); setSelectedFinanceTransactions([]); }} aria-label="Filter penerima pembayaran"><option value="all">Semua penerima</option>{financePayeeOptions.map((payee) => <option key={payee} value={payee}>{payee}</option>)}</select>
           <select value={financeStatusFilter} onChange={(event) => { setFinanceStatusFilter(event.target.value as typeof financeStatusFilter); setFinancePage(1); }} aria-label="Status tagihan"><option value="outstanding">Tagihan aktif</option><option value="all">Semua status</option><option value="unpaid">Belum dibayar</option><option value="partial">DP sebagian</option><option value="paid">Lunas</option></select>
           {financePeriod === "custom" && <div className="finance-toolbar-custom-range"><input aria-label="Tanggal mulai laporan keuangan" type="date" value={customStart} max={customEnd} onChange={(event) => { setCustomStart(event.target.value); setFinancePage(1); }} /><span>–</span><input aria-label="Tanggal selesai laporan keuangan" type="date" value={customEnd} min={customStart} onChange={(event) => { setCustomEnd(event.target.value); setFinancePage(1); }} /></div>}
         </div>
+        {selectedFinanceTransactionRows.length > 0 && <div className="finance-bulk-payment-bar"><span><b>{selectedFinanceTransactionRows.length} transaksi dipilih</b><small>{selectedFinanceAnchor?.payee} · {selectedFinanceAnchor?.type} · total sisa {rupiah(selectedFinanceBulkTotal)}</small></span><button type="button" onClick={() => setSelectedFinanceTransactions([])}>Batalkan</button><button type="button" className="primary" onClick={() => selectedFinanceAnchor && createPaymentFromReport(selectedFinanceAnchor, selectedFinanceTransactionRows.flatMap((row) => row.weeks))}>Bayar gabungan</button></div>}
         {filteredFinanceRows.length === 0 ? <div className="finance-transfer-empty"><b>Belum ada data yang sesuai</b><span>Ubah pencarian, filter, atau periode laporan.</span></div> : <>
           <div className="finance-ledger-table-wrap"><table className={`finance-ledger-table ${financeHiddenClasses}`}><thead><tr><th>No.</th><th>Jenis</th><th>Penerima</th><th>Kode Transaksi</th><th>Tagihan</th><th>Dibayar</th><th>Sisa</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{pagedFinanceRows.map((row, index) => {
             const rowKey = row.key;
             return <tr key={rowKey} className="finance-parent-row">
-                <td data-label="No.">{(safeFinancePage - 1) * financePageSize + index + 1}</td>
+                <td data-label="No."><span className="finance-select-number"><input type="checkbox" aria-label={`Pilih transaksi ${row.transactionId}`} disabled={row.remaining <= 0 || !financeBulkCompatible(row)} checked={selectedFinanceTransactions.includes(row.key)} onChange={() => toggleFinanceTransaction(row)} /><b>{(safeFinancePage - 1) * financePageSize + index + 1}</b></span></td>
                 <td data-label="Jenis"><b className="finance-kind">{row.type}</b></td>
                 <td data-label="Penerima"><span className="finance-payee-cell"><b>{row.payee}</b><small>{row.bankName && row.accountNumber ? `${row.bankName} · ${row.accountNumber} · a.n. ${row.accountHolder || row.payee}` : "Rekening belum dilengkapi"}</small></span></td>
                 <td data-label="Kode Transaksi"><span className="finance-period-cell"><b>{row.transactionId}</b><small>{row.transactionDate}</small></span></td><td data-label="Tagihan"><b>{rupiah(row.bill)}</b></td><td data-label="Dibayar">{rupiah(row.paid)}</td><td data-label="Sisa"><strong>{rupiah(row.remaining)}</strong></td>
