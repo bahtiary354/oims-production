@@ -304,14 +304,14 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Total tagihan produksi/);
   assert.match(page, /const whatsappURL/);
   assert.match(page, /Daftar tagihan produksi/);
-  assert.match(page, /Cari penerima, rekening, atau status/);
+  assert.match(page, /Cari kode transaksi, penerima, rekening, atau status/);
   assert.match(page, /finance-ledger-table/);
   assert.match(page, /selectedReminder\(selectedFinanceRow, selectedFinanceCheckedWeeks\)/);
   assert.match(page, /Ajukan via WA/);
   assert.match(page, /financePhone && selectedFinanceCheckedWeeks\.length > 0 \? <a/);
   assert.doesNotMatch(page, /selectedFinanceCheckedWeeks\.length > 0 && selectedFinanceRow\.bankName && selectedFinanceRow\.accountNumber/);
-  assert.match(page, /Periode rincian mingguan/);
-  assert.match(page, /Pilih tunggakan/);
+  assert.match(page, /Tagihan transaksi/);
+  assert.match(page, /Pilih tagihan/);
   assert.match(page, /Referensi Cutting belum tercatat/);
   assert.match(page, /Nomor rekening:/);
   assert.match(page, /Penerima rekening:/);
@@ -330,7 +330,7 @@ test("production app has correct metadata and connected workflow", async () => {
   assert.match(page, /Pesan ini belum dikirim otomatis/);
   assert.match(css, /\.finance-reminder-bar/);
   assert.match(css, /\.outstanding-actions/);
-  assert.match(page, /Custom tanggal/);
+  assert.match(page, /Tanggal mulai laporan keuangan/);
   assert.match(page, /exportFinanceCSV/);
   assert.match(page, /Ekspor CSV/);
   assert.match(page, /function FinanceReportPrint/);

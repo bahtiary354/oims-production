@@ -29,8 +29,9 @@ test("central payment history exposes filters, responsive table, detail, export,
   ]);
 
   for (const text of [
-    "Nomor rekap",
-    "Tanggal pembukuan",
+    "Nomor bukti",
+    "Tanggal pembayaran",
+    "Kode transaksi",
     "Pelaksana/vendor",
     "Tanggal mulai",
     "Tanggal selesai",
