@@ -26,8 +26,7 @@ export function AppSidebar({ active, mobileMenu, openNavGroup, setOpenNavGroup, 
       {mobileMenu && <button className="mobile-menu-backdrop" aria-label="Tutup menu" onClick={closeMobileMenu} />}
       <aside className={`app-side ${mobileMenu ? "mobile-open" : ""}`}>
         <div className="app-brand">
-          <Image src="/oims-logo.jpg" alt="Logo Oims" width={52} height={52} priority />
-          <div><b>Oims</b><small>PRODUCTION MANAGEMENT</small></div>
+          <Image className="app-brand-logo" src="/oims-brand.png" alt="Logo Owncrave Production Management" width={204} height={78} priority />
           <button className="mobile-menu-close" aria-label="Tutup menu" onClick={closeMobileMenu}>×</button>
         </div>
         <p>MENU UTAMA</p>

@@ -9,6 +9,17 @@
   --gold: #dda73f;
 }
 
+/* Brand lockup: use the supplied full logo without duplicating its wordmark. */
+.app-side .app-brand .app-brand-logo {
+  width: 204px;
+  height: 78px;
+  max-width: calc(100% - 8px);
+  object-fit: contain;
+  object-position: left center;
+  border-radius: 0;
+  background: transparent;
+}
+
 /* Surat Jalan final UI guard — keep after every legacy responsive rule. */
 .app-shell .workspace .sj-display-controls {
   display: flex !important;
