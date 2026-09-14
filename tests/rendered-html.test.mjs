@@ -444,7 +444,7 @@ test("persistent state is normalized without destructive reads and masters remai
   assert.match(persistenceHook, /const latestResponse = await fetch/);
   assert.match(persistenceHook, /normalizeRef\.current\(\{ \.\.\.savedState, \.\.\.result \}\)/);
   assert.match(page, /records: state\.records \?\? initial\.records/);
-  assert.match(page, /children\("Karantina Reject", r\.id\)/);
+  assert.match(page, /quarantined = !hasReject \|\| sum\(rejectVariants\) > 0/);
   assert.match(page, /done = reworked && stocked && quarantined/);
   assert.match(page, /deleteModel/);
   assert.match(page, /deleteVendor/);

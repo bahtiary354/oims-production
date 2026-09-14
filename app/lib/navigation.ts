@@ -27,7 +27,8 @@ export const navGroups = [
   { id: "production", section: "OPERASIONAL", icon: "◇", label: "Produksi", items: ["Cutting", "Bundle"] },
   { id: "decoration", section: "OPERASIONAL", icon: "✦", label: "Sablon & Bordir", items: ["Sablon/Bordir"] },
   { id: "vendor", section: "OPERASIONAL", icon: "↗", label: "Vendor & Gudang", items: ["Pengiriman Vendor", "Penerimaan Gudang"] },
-  { id: "qc", section: "OPERASIONAL", icon: "✓", label: "Quality Control", items: ["Pengiriman QC", "Quality Control", "Rework", "Penerimaan Rework", "QC Ulang", "Karantina Reject"] },
+  { id: "qc", section: "OPERASIONAL", icon: "✓", label: "Quality Control", items: ["Pengiriman QC", "Quality Control"] },
+  { id: "rework", section: "OPERASIONAL", icon: "↻", label: "Rework & Karantina", items: ["Rework", "Penerimaan Rework", "QC Ulang", "Karantina Reject"] },
   { id: "inventory", section: "OPERASIONAL", icon: "▣", label: "Persediaan", items: ["Stok Barang Jadi"] },
   { id: "report", section: "ANALITIK", icon: "▥", label: "Laporan", items: ["Laporan Operasional", "Laporan Keuangan", "Riwayat Pembayaran"] },
 ] as const;

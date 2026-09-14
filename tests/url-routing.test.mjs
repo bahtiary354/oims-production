@@ -31,6 +31,8 @@ test("menu modules are synchronized with readable URLs", async () => {
   assert.match(navigation, /Cutting: "\/produksi\/cutting"/);
   assert.match(navigation, /"Laporan Keuangan": "\/laporan\/keuangan"/);
   assert.match(navigation, /"Surat Jalan": "\/surat-jalan"/);
+  assert.match(navigation, /label: "Quality Control", items: \["Pengiriman QC", "Quality Control"\]/);
+  assert.match(navigation, /label: "Rework & Karantina", items: \["Rework", "Penerimaan Rework", "QC Ulang", "Karantina Reject"\]/);
   assert.match(navigationHook, /const pathname = usePathname\(\)/);
   assert.match(navigationHook, /window\.history\.pushState\(null, "", nextPath\)/);
   assert.match(navigationHook, /window\.history\.replaceState\(null, "", modulePaths\.Dashboard\)/);

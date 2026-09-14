@@ -2120,14 +2120,9 @@ function LiveStageStatus({
               mergeVariants(children("Stok Barang Jadi", r.id)),
             ),
           ) === 0,
-        quarantined =
-          !hasReject ||
-          sum(
-            subtractVariants(
-              rejectVariants,
-              mergeVariants(children("Karantina Reject", r.id)),
-            ),
-          ) === 0,
+        // Reject langsung masuk daftar Karantina Reject sebagai data turunan
+        // dari hasil QC, sehingga tidak memerlukan record anak tambahan.
+        quarantined = !hasReject || sum(rejectVariants) > 0,
         done = reworked && stocked && quarantined;
       return {
         label: done
