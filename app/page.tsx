@@ -703,7 +703,7 @@ function VariantDetailDrawer({ row, onClose }: { row: RecordRow; onClose: () => 
   const total = sum(row.variants);
   return <div className="owner-drawer-backdrop" onClick={onClose}>
     <aside className="owner-drawer operational-variant-drawer" role="dialog" aria-modal="true" aria-label={`Rincian warna dan ukuran ${row.modelName}`} onClick={(event) => event.stopPropagation()}>
-      <header><div><p className="overline">RINCIAN WARNA & UKURAN</p><h2>{row.modelName}</h2><span>{row.id} · {total} unit</span></div><button type="button" aria-label="Tutup rincian" onClick={onClose}>×</button></header>
+      <header><div><h2>{row.modelName}</h2><span>{row.id} · {total} unit</span></div><button type="button" aria-label="Tutup rincian" onClick={onClose}>×</button></header>
       <div className="operational-variant-drawer-body"><div className="operational-variant-matrix-wrap"><table className="operational-variant-matrix"><thead><tr><th>Warna</th>{sizes.map((size) => <th key={size}>{size}</th>)}<th>Total</th></tr></thead><tbody>{colors.map((color) => {
         const colorVariants = row.variants.filter((variant) => variant.color === color), colorTotal = colorVariants.reduce((value, variant) => value + variant.qty, 0);
         return <tr key={color}><td><b>{color}</b></td>{sizes.map((size) => <td key={`${color}-${size}`}>{colorVariants.find((variant) => variant.size === size)?.qty || "—"}</td>)}<td><b>{colorTotal}</b></td></tr>;
@@ -1878,7 +1878,7 @@ function OwnerVendorMonitoring({
           className="owner-drawer-backdrop"
           onClick={() => setSelected(null)}
         >
-          <aside className="owner-drawer vendor-activity-drawer" onClick={(e) => e.stopPropagation()}>
+          <aside className="owner-drawer vendor-activity-drawer" role="dialog" aria-modal="true" aria-label={`Rincian aktivitas vendor ${detail.v.name}`} onClick={(e) => e.stopPropagation()}>
             <header>
               <div>
                 <h2>Rincian {detail.v.name}</h2>
@@ -6719,17 +6719,6 @@ function VariantMatrix({
   const sizes = [...new Set(values.map((x) => x.size))];
   return (
     <div className={`variant-box${compact ? " receipt-variant-box" : ""}`}>
-      {!compact && <div className="variant-head">
-        <div>
-          <b>Rincian warna × ukuran</b>
-          <small>
-            {readOnly
-              ? "Mengikuti bundle terpilih dan tidak dapat diubah pada tahap pengiriman."
-              : "Mengikuti Master Jaket dan dapat disesuaikan pada setiap proses."}
-          </small>
-        </div>
-        <span>{sizes.length} ukuran</span>
-      </div>}
       <div className="scroll">
         <table className="matrix">
           <thead>
@@ -7445,7 +7434,7 @@ function LegacyDashboard({
           className="owner-drawer-backdrop"
           onClick={() => setBreakdown(null)}
         >
-          <aside className="owner-drawer" onClick={(e) => e.stopPropagation()}>
+          <aside className="owner-drawer" role="dialog" aria-modal="true" aria-label={`Rincian ${breakdown}`} onClick={(e) => e.stopPropagation()}>
             <header>
               <div>
                 <p className="overline">BREAKDOWN POSISI UNIT</p>
@@ -8007,7 +7996,7 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
       </section>
       {selectedSummary && (
         <div className="owner-drawer-backdrop summary-detail-backdrop" onClick={() => setSummaryDetail(null)}>
-          <aside className="owner-drawer summary-detail-drawer" onClick={(event) => event.stopPropagation()}>
+          <aside className="owner-drawer summary-detail-drawer" role="dialog" aria-modal="true" aria-label={`Rincian ${selectedSummary.label}`} onClick={(event) => event.stopPropagation()}>
             <header>
               <div>
                 <h2>Rincian {selectedSummary.label}</h2>
@@ -9525,7 +9514,7 @@ function DeliveryNoteSourceSummary({ note, onOpen }: { note: Note; onOpen: (note
 }
 function DeliveryNoteSourceDrawer({ note, onClose }: { note: Note; onClose: () => void }) {
   const groups = deliveryNoteSourceGroups(note);
-  return <div className="owner-drawer-backdrop" onClick={onClose}><aside className="owner-drawer sj-source-drawer" onClick={(event) => event.stopPropagation()}><header><div><p className="overline">SUMBER SURAT JALAN</p><h2>{note.id}</h2><span>{note.modelCode} — {note.modelName}</span></div><button type="button" aria-label="Tutup rincian sumber" onClick={onClose}>×</button></header><div className="sj-source-drawer-table"><table><thead><tr><th>No.</th><th>Sumber Cutting</th><th>Bundle / Lot</th></tr></thead><tbody>{groups.map((group, index) => <tr key={`${group.cuttingCode}-${index}`}><td>{index + 1}</td><td><b>{group.cuttingCode}</b></td><td>{group.bundleCodes.length ? group.bundleCodes.join(", ") : "—"}</td></tr>)}</tbody></table></div></aside></div>;
+  return <div className="owner-drawer-backdrop" onClick={onClose}><aside className="owner-drawer sj-source-drawer" role="dialog" aria-modal="true" aria-label={`Rincian sumber surat jalan ${note.id}`} onClick={(event) => event.stopPropagation()}><header><div><p className="overline">SUMBER SURAT JALAN</p><h2>{note.id}</h2><span>{note.modelCode} — {note.modelName}</span></div><button type="button" aria-label="Tutup rincian sumber" onClick={onClose}>×</button></header><div className="sj-source-drawer-table"><table><thead><tr><th>No.</th><th>Sumber Cutting</th><th>Bundle / Lot</th></tr></thead><tbody>{groups.map((group, index) => <tr key={`${group.cuttingCode}-${index}`}><td>{index + 1}</td><td><b>{group.cuttingCode}</b></td><td>{group.bundleCodes.length ? group.bundleCodes.join(", ") : "—"}</td></tr>)}</tbody></table></div></aside></div>;
 }
 function NoteCards({ notes, startIndex, onPrint, onSourceDetail }: { notes: Note[]; startIndex: number; onPrint: (n: Note) => void; onSourceDetail: (n: Note) => void }) {
   return <div className="sj-card-grid">{notes.map((note, index) => <article className="sj-document-card" key={note.id}>
@@ -9837,7 +9826,7 @@ function PaymentHistoryReport({
         <footer className="finance-ledger-footer"><label>Tampilkan <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); resetPage(); }}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select> data</label><span>Menampilkan {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filteredRows.length)} dari {filteredRows.length}</span><div><button type="button" disabled={safePage <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>‹</button><b>{safePage}</b><button type="button" disabled={safePage >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>›</button></div></footer>
       </>}
     </section>
-    {selected && <div className="owner-drawer-backdrop" onClick={() => setSelectedKey(null)}><aside className="owner-drawer payment-history-drawer" onClick={(event) => event.stopPropagation()}><header><div><p className="overline">RINCIAN PEMBAYARAN</p><h2>{selected.id}</h2><span>{selected.process} · {selected.payee}</span></div><button type="button" aria-label="Tutup rincian" onClick={() => setSelectedKey(null)}>×</button></header>
+    {selected && <div className="owner-drawer-backdrop" onClick={() => setSelectedKey(null)}><aside className="owner-drawer payment-history-drawer" role="dialog" aria-modal="true" aria-label={`Rincian pembayaran ${selected.id}`} onClick={(event) => event.stopPropagation()}><header><div><p className="overline">RINCIAN PEMBAYARAN</p><h2>{selected.id}</h2><span>{selected.process} · {selected.payee}</span></div><button type="button" aria-label="Tutup rincian" onClick={() => setSelectedKey(null)}>×</button></header>
       <div className="payment-history-detail-summary"><p><span>Tanggal pembayaran</span><b>{selected.bookedDate}</b></p><p><span>Kode transaksi</span><b>{selected.lines[0]?.recordId || "—"}</b></p><p><span>Dibuat oleh</span><b>{selected.createdBy}</b></p><p><span>Status</span><em className={`finance-status ${selected.status === "Lunas" ? "paid" : selected.status === "Sebagian" ? "partial" : "unpaid"}`}>{selected.status}</em></p><p><span>Total tagihan</span><b>{rupiah(selected.totalAmount)}</b></p><p><span>Sisa</span><strong>{rupiah(selected.remaining)}</strong></p></div>
       {selected.status === "Dibatalkan" && <div className="payment-history-void-audit"><b>Rekap dibatalkan</b><span>{selected.voidReason || "Alasan tidak tercatat"}</span><small>{selected.voidedBy || "User lama"}{selected.voidedAt ? ` · ${new Date(selected.voidedAt).toLocaleString("id-ID")}` : " · waktu lama tidak tersedia"}</small></div>}
       <section className="payment-history-detail-section"><header><h3>Daftar transaksi / batch</h3></header><div className="summary-detail-table-wrap"><table><thead><tr><th>No.</th><th>Kode batch</th><th>Model</th><th>Tarif/unit</th><th>Unit</th><th>Subtotal</th><th>Dibayar pada bukti ini</th></tr></thead><tbody>{selected.lines.map((line, index) => <tr key={`${line.recordId}-${index}`}><td>{index + 1}</td><td><b>{line.recordId}</b></td><td>{line.modelName}</td><td>{rupiah(line.rate)}</td><td>{line.units}</td><td><b>{rupiah(line.amount)}</b></td><td><b>{rupiah(line.paymentAmount ?? (selected.lines.length === 1 ? selected.paidAmount : 0))}</b></td></tr>)}</tbody></table></div></section>
@@ -10471,7 +10460,7 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
           <footer className="finance-ledger-footer"><label>Tampilkan <select value={financePageSize} onChange={(e) => { setFinancePageSize(Number(e.target.value)); setFinancePage(1); }}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select> data</label><span>Menampilkan {(safeFinancePage - 1) * financePageSize + 1}–{Math.min(safeFinancePage * financePageSize, filteredFinanceRows.length)} dari {filteredFinanceRows.length}</span><div><button type="button" disabled={safeFinancePage <= 1} onClick={() => setFinancePage((page) => Math.max(1, page - 1))}>‹</button><b>{safeFinancePage}</b><button type="button" disabled={safeFinancePage >= financePageCount} onClick={() => setFinancePage((page) => Math.min(financePageCount, page + 1))}>›</button></div></footer>
         </>}
       </section>
-      {selectedFinanceRow && <div className="owner-drawer-backdrop" onClick={() => setExpandedFinanceRow(null)}><aside className="owner-drawer finance-ledger-drawer" onClick={(event) => event.stopPropagation()}>
+      {selectedFinanceRow && <div className="owner-drawer-backdrop" onClick={() => setExpandedFinanceRow(null)}><aside className="owner-drawer finance-ledger-drawer" role="dialog" aria-modal="true" aria-label={`Rincian tagihan ${selectedFinanceRow.transactionId}`} onClick={(event) => event.stopPropagation()}>
         <header><div><p className="overline">RINCIAN TAGIHAN</p><h2>{selectedFinanceRow.transactionId}</h2><span>{selectedFinanceRow.type} · {selectedFinanceRow.payee} · {selectedFinanceRow.transactionDate}</span></div><button type="button" aria-label="Tutup rincian tagihan" onClick={() => setExpandedFinanceRow(null)}>×</button></header>
         <div className="finance-ledger-drawer-body">
         <div className="finance-drawer-pics"><label><span>PIC pengaju</span><select value={requesterPICCode} onChange={(event) => setRequesterPICCode(event.target.value)}><option value="">Pilih PIC pengaju</option>{requesterPICOptions.map((pic) => <option key={pic.code} value={pic.code}>{pic.name} · {pic.role}</option>)}</select></label><label><span>PIC penerima Finance</span><select value={financePICCode} onChange={(event) => setFinancePICCode(event.target.value)}><option value="">Pilih PIC Finance</option>{financePICOptions.map((pic) => <option key={pic.code} value={pic.code}>{pic.name} · {pic.role}</option>)}</select></label></div>
@@ -10552,8 +10541,8 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
         </>}
       </section>
       {selectedOperationalRow && <div className="owner-drawer-backdrop" onClick={() => setSelectedOperationalRowId(null)}>
-        <aside className="owner-drawer operational-variant-drawer" onClick={(event) => event.stopPropagation()}>
-	          <header><div><p className="overline">RINCIAN WARNA & UKURAN</p><h2>{selectedOperationalRow.modelName}</h2><span>{selectedOperationalRow.id} · {reportRowUnits(selectedOperationalRow)} unit</span></div><button type="button" aria-label="Tutup rincian" onClick={() => setSelectedOperationalRowId(null)}>×</button></header>
+        <aside className="owner-drawer operational-variant-drawer" role="dialog" aria-modal="true" aria-label={`Rincian laporan ${selectedOperationalRow.modelName}`} onClick={(event) => event.stopPropagation()}>
+	          <header><div><h2>{selectedOperationalRow.modelName}</h2><span>{selectedOperationalRow.id} · {reportRowUnits(selectedOperationalRow)} unit</span></div><button type="button" aria-label="Tutup rincian" onClick={() => setSelectedOperationalRowId(null)}>×</button></header>
           <div className="operational-variant-drawer-body"><div className="operational-variant-matrix-wrap"><table className="operational-variant-matrix"><thead><tr><th>Warna</th>{selectedOperationalSizes.map((size) => <th key={size}>{size}</th>)}<th>Total</th></tr></thead><tbody>
             {selectedOperationalColors.map((color) => {
               const colorVariants = selectedOperationalRow.variants.filter((variant) => variant.color === color),
@@ -10581,7 +10570,7 @@ function Reports({ data, go, mode, onCreatePayment }: { data: AppData; go: (stag
           <footer className="vendor-report-footer"><label>Tampilkan <select value={vendorReportPageSize} onChange={(e) => { setVendorReportPageSize(Number(e.target.value)); setVendorReportPage(1); }}><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select> data</label><span>Menampilkan {(safeVendorReportPage - 1) * vendorReportPageSize + 1}–{Math.min(safeVendorReportPage * vendorReportPageSize, filteredVendorReportRows.length)} dari {filteredVendorReportRows.length}</span><div><button type="button" disabled={safeVendorReportPage <= 1} onClick={() => setVendorReportPage((page) => Math.max(1, page - 1))}>‹</button><b>{safeVendorReportPage}</b><button type="button" disabled={safeVendorReportPage >= vendorReportPageCount} onClick={() => setVendorReportPage((page) => Math.min(vendorReportPageCount, page + 1))}>›</button></div></footer>
         </>}
       </section>
-	      {selectedVendorReportRow && <div className="owner-drawer-backdrop" onClick={() => setSelectedVendorReport(null)}><aside className="owner-drawer vendor-report-drawer" onClick={(e) => e.stopPropagation()}><header><div><p className="overline">RINCIAN VENDOR</p><h2>{selectedVendorReportRow.vendor}</h2><span>{selectedVendorReportRow.poId} · {selectedVendorReportRow.modelName}</span></div><button aria-label="Tutup rincian" onClick={() => setSelectedVendorReport(null)}>×</button></header><div className="vendor-detail-totals"><p><span>Dikirim</span><b>{selectedVendorReportRow.sent} unit</b></p><p><span>Sudah disetor</span><b>{selectedVendorReportRow.received} unit</b></p><p><span>Masih dijahit</span><b>{selectedVendorReportRow.remaining} unit</b></p><p><span>Status</span><b>{selectedVendorReportRow.status}</b></p></div><div className="vendor-detail-section"><h3>Bundle dikirim</h3>{selectedVendorReportRow.shipments.map((shipment) => <p key={shipment.id}><span><b>{shipment.bundleId || shipment.sourceId}</b><small>{shipment.id} · {shipment.date}</small></span><strong>{reportRowUnits(shipment)} unit</strong></p>)}</div><div className="vendor-detail-section"><h3>Sisa warna & ukuran di vendor</h3>{selectedVendorReportRow.remainingVariants.length === 0 ? <p><span>Semua bundle telah disetor.</span></p> : selectedVendorReportRow.remainingVariants.map((variant) => <p key={`${variant.color}-${variant.size}`}><span><b>{variant.color} · {variant.size}</b></span><strong>{variant.qty} unit</strong></p>)}</div><div className="vendor-detail-section"><h3>Riwayat setoran gudang</h3>{selectedVendorReportRow.receipts.length === 0 ? <p><span>Belum ada setoran.</span></p> : selectedVendorReportRow.receipts.sort((a, b) => b.date.localeCompare(a.date)).map((receipt) => <p key={receipt.id}><span><b>{receipt.id}</b><small>{receipt.date}</small></span><strong>{reportRowUnits(receipt)} unit</strong></p>)}</div></aside></div>}
+	      {selectedVendorReportRow && <div className="owner-drawer-backdrop" onClick={() => setSelectedVendorReport(null)}><aside className="owner-drawer vendor-report-drawer" role="dialog" aria-modal="true" aria-label={`Rincian vendor ${selectedVendorReportRow.vendor}`} onClick={(e) => e.stopPropagation()}><header><div><p className="overline">RINCIAN VENDOR</p><h2>{selectedVendorReportRow.vendor}</h2><span>{selectedVendorReportRow.poId} · {selectedVendorReportRow.modelName}</span></div><button aria-label="Tutup rincian" onClick={() => setSelectedVendorReport(null)}>×</button></header><div className="vendor-detail-totals"><p><span>Dikirim</span><b>{selectedVendorReportRow.sent} unit</b></p><p><span>Sudah disetor</span><b>{selectedVendorReportRow.received} unit</b></p><p><span>Masih dijahit</span><b>{selectedVendorReportRow.remaining} unit</b></p><p><span>Status</span><b>{selectedVendorReportRow.status}</b></p></div><div className="vendor-detail-section"><h3>Bundle dikirim</h3>{selectedVendorReportRow.shipments.map((shipment) => <p key={shipment.id}><span><b>{shipment.bundleId || shipment.sourceId}</b><small>{shipment.id} · {shipment.date}</small></span><strong>{reportRowUnits(shipment)} unit</strong></p>)}</div><div className="vendor-detail-section"><h3>Sisa warna & ukuran di vendor</h3>{selectedVendorReportRow.remainingVariants.length === 0 ? <p><span>Semua bundle telah disetor.</span></p> : selectedVendorReportRow.remainingVariants.map((variant) => <p key={`${variant.color}-${variant.size}`}><span><b>{variant.color} · {variant.size}</b></span><strong>{variant.qty} unit</strong></p>)}</div><div className="vendor-detail-section"><h3>Riwayat setoran gudang</h3>{selectedVendorReportRow.receipts.length === 0 ? <p><span>Belum ada setoran.</span></p> : selectedVendorReportRow.receipts.sort((a, b) => b.date.localeCompare(a.date)).map((receipt) => <p key={receipt.id}><span><b>{receipt.id}</b><small>{receipt.date}</small></span><strong>{reportRowUnits(receipt)} unit</strong></p>)}</div></aside></div>}
       </>}
       {showFinancePrint && <FinanceReportPrint period={periodLabel} cutting={[cuttingBill, cuttingPaid]} vendor={[vendorBill, vendorPaid]} decoration={[decorationBill, decorationPaid]} qc={[qcBill, qcPaid]} payments={paymentRows} close={() => setShowFinancePrint(false)} />}
     </div>

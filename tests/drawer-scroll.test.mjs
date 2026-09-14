@@ -26,3 +26,16 @@ test("all detail drawers share one vertical scroll contract", async () => {
   assert.ok(backdrops.length >= 6, "expected all detail backdrop variants to use the shared class");
   assert.equal(drawers.length, backdrops.length, "each shared backdrop should contain a shared drawer");
 });
+
+test("all drawers and form modals share one readable visual standard", async () => {
+  const [page, css] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(css, /Unified drawer and modal visual standard/);
+  assert.match(css, /\.owner-drawer :is\(table, \.summary-detail-table, \.operational-variant-matrix\)/);
+  assert.match(css, /\.form-modal :is\(table, \.matrix-table\)/);
+  const drawers = page.match(/<aside className="owner-drawer[^>]*role="dialog"[^>]*aria-modal="true"/g) ?? [];
+  const allDrawers = page.match(/<aside className="owner-drawer/g) ?? [];
+  assert.equal(drawers.length, allDrawers.length, "every owner drawer should expose dialog semantics");
+});

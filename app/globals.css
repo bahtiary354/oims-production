@@ -2891,6 +2891,201 @@ td button {
   }
 }
 
+/* Unified drawer and modal visual standard.
+   Keeps every workflow readable and predictable without changing its data. */
+@media screen {
+  .owner-drawer-backdrop {
+    padding-left: 24px;
+    background: rgba(15, 23, 42, 0.48);
+    backdrop-filter: blur(2px);
+  }
+
+  .owner-drawer {
+    width: min(920px, calc(100vw - 24px));
+    border-left: 1px solid #dbe3ef;
+    border-radius: 18px 0 0 18px;
+    background: #f8fafc;
+    color: #172033;
+    box-shadow: -18px 0 48px rgba(15, 23, 42, 0.18);
+  }
+
+  .owner-drawer > header {
+    min-height: 96px;
+    align-items: flex-start;
+    padding: 21px 24px;
+    border-bottom-color: #dfe6f0;
+  }
+
+  .owner-drawer > header .overline {
+    margin: 0 0 6px;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+  }
+
+  .owner-drawer > header h2 {
+    margin: 0 0 6px;
+    color: #101827;
+    font-size: 24px;
+    line-height: 1.18;
+  }
+
+  .owner-drawer > header span {
+    color: #718096;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .owner-drawer > header button {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    border-color: #d8e1ed;
+    border-radius: 11px;
+    color: #172033;
+    cursor: pointer;
+  }
+
+  .owner-drawer :is(table, .summary-detail-table, .operational-variant-matrix) {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    font-size: 12px;
+  }
+
+  .owner-drawer :is(th, .summary-detail-table th, .operational-variant-matrix th) {
+    padding: 11px 12px;
+    border-bottom: 1px solid #dbe3ef;
+    background: #f1f5f9;
+    color: #536176;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .owner-drawer :is(td, .summary-detail-table td, .operational-variant-matrix td) {
+    padding: 11px 12px;
+    border-bottom: 1px solid #e5eaf1;
+    color: #263244;
+    font-size: 12px;
+    line-height: 1.4;
+    vertical-align: middle;
+  }
+
+  .owner-drawer :is(td, section, article) :is(small, span) {
+    line-height: 1.4;
+  }
+
+  .owner-drawer :is(.drawer-list, .vendor-activity-drawer-body, .operational-variant-drawer-body) {
+    padding: 16px;
+  }
+
+  .owner-drawer :is(.vendor-drawer-section, .vendor-detail-section, .payment-history-detail-section) h3 {
+    color: #172033;
+    font-size: 14px;
+    line-height: 1.35;
+  }
+
+  .owner-drawer > footer {
+    min-height: 68px;
+    padding: 13px 16px;
+    border-top-color: #dfe6f0;
+  }
+
+  .owner-drawer > footer :is(button, a) {
+    min-height: 42px;
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  .form-modal {
+    max-height: 94dvh;
+    border: 1px solid #dbe3ef;
+    border-radius: 16px;
+    padding: 24px;
+    color: #172033;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+  }
+
+  .form-modal h2 {
+    margin: 0 48px 20px 0;
+    color: #101827;
+    font-size: 23px;
+    line-height: 1.2;
+  }
+
+  .form-modal .close {
+    top: 18px;
+    right: 18px;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    color: #172033;
+  }
+
+  .form-modal :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    min-height: 44px;
+    border-color: #d5deea;
+    border-radius: 10px;
+    font-size: 13px;
+  }
+
+  .form-modal :is(table, .matrix-table) {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .form-modal :is(th, td) {
+    padding: 10px 11px;
+    border-bottom: 1px solid #e4eaf2;
+    font-size: 12px;
+  }
+
+  .form-modal th {
+    background: #f1f5f9;
+    color: #536176;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .form-modal :is(button, .primary) {
+    min-height: 40px;
+    font-size: 12px;
+  }
+
+  @media (max-width: 720px) {
+    .owner-drawer-backdrop { padding-left: 0; }
+    .owner-drawer {
+      width: 100vw;
+      border-left: 0;
+      border-radius: 0;
+    }
+    .owner-drawer > header {
+      min-height: 82px;
+      padding: 15px 16px;
+    }
+    .owner-drawer > header h2 { font-size: 19px; }
+    .owner-drawer :is(.drawer-list, .vendor-activity-drawer-body, .operational-variant-drawer-body) { padding: 10px; }
+    .form-modal {
+      width: 100vw;
+      max-width: none;
+      max-height: 100dvh;
+      min-height: 100dvh;
+      border: 0;
+      border-radius: 0;
+      padding: 18px 15px;
+    }
+    .form-modal h2 { font-size: 20px; }
+  }
+}
+
 /* Centralized payment history */
 .payment-history-page {
   width: 100%;
