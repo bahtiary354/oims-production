@@ -3140,10 +3140,15 @@ export default function Home() {
           qty: x.repair,
         }))
         .filter((x) => x.qty > 0);
-    if (stage === "Stok Barang Jadi" && source.qcDetails)
-      return source.qcDetails
+    if (stage === "Stok Barang Jadi" && source.qcDetails) {
+      const passed = source.qcDetails
         .map((x) => ({ color: x.color, size: x.size, qty: x.passed }))
         .filter((x) => x.qty > 0);
+      const alreadyReceived = (data.records["Stok Barang Jadi"] ?? [])
+        .filter((x) => x.sourceId === source.id)
+        .flatMap((x) => x.variants);
+      return subtractVariants(passed, alreadyReceived);
+    }
     if (stage === "Karantina Reject" && source.qcDetails)
       return source.qcDetails
         .map((x) => ({ color: x.color, size: x.size, qty: x.reject }))
@@ -3201,10 +3206,7 @@ export default function Home() {
     if (stage === "Stok Barang Jadi")
       return (
         !!source.qcDetails &&
-        sum(routedVariants("Stok Barang Jadi", source)) > 0 &&
-        !(data.records["Stok Barang Jadi"] ?? []).some(
-          (x) => x.sourceId === source.id,
-        )
+        sum(routedVariants("Stok Barang Jadi", source)) > 0
       );
     if (stage === "Karantina Reject")
       return (

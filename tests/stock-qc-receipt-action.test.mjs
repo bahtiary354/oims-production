@@ -12,15 +12,25 @@ test("halaman persediaan menyediakan aksi penerimaan hasil QC", () => {
   assert.match(page, /disabled=\{pendingSources\.length === 0\}/);
 });
 
-test("penerimaan stok memakai pengaman sumber QC yang sudah pernah dibukukan", () => {
+test("penerimaan stok menghitung sisa hasil QC per warna dan ukuran", () => {
+  const routed = page.slice(
+    page.indexOf("function routedVariants"),
+    page.indexOf("function autoBundle"),
+  );
   const availability = page.slice(
     page.indexOf("function sourceAvailable"),
     page.indexOf("function openRecord"),
   );
-  assert.match(availability, /stage === "Stok Barang Jadi"/);
-  assert.match(availability, /routedVariants\("Stok Barang Jadi", source\)/);
-  assert.match(availability, /data\.records\["Stok Barang Jadi"\]/);
-  assert.match(availability, /x\.sourceId === source\.id/);
+  const stockAvailability = availability.slice(
+    availability.indexOf('if (stage === "Stok Barang Jadi")'),
+    availability.indexOf('if (stage === "Karantina Reject")'),
+  );
+  assert.match(routed, /const alreadyReceived = \(data\.records\["Stok Barang Jadi"\] \?\? \[\]\)/);
+  assert.match(routed, /\.filter\(\(x\) => x\.sourceId === source\.id\)/);
+  assert.match(routed, /return subtractVariants\(passed, alreadyReceived\)/);
+  assert.match(stockAvailability, /stage === "Stok Barang Jadi"/);
+  assert.match(stockAvailability, /routedVariants\("Stok Barang Jadi", source\)/);
+  assert.doesNotMatch(stockAvailability, /x\.sourceId === source\.id/);
 });
 
 test("persediaan tidak menampilkan ulang bagian transaksi selesai", () => {
