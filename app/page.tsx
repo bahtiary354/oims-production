@@ -3,6 +3,7 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { applyDecorationReceipt, getDecorationReceiptState, validateDecorationReceiptInput } from "../lib/decoration-receipt";
+import { buildProductionSummary, productionSummaryCSV } from "../lib/production-summary";
 import { AppSidebar } from "./components/app-sidebar";
 import { AppTopbar } from "./components/app-topbar";
 import { ModuleView, ModuleWorkspace } from "./components/module-workspace";
@@ -7839,20 +7840,40 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
     };
   });
   const boardCards = cards.filter((x) => x.key !== "Stok Barang Jadi");
+  function downloadProductionSummary() {
+    if (!rangeStart || !rangeEnd || rangeStart > rangeEnd) return;
+    const summary = buildProductionSummary(records, rangeStart, rangeEnd),
+      content = productionSummaryCSV(summary),
+      url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" })),
+      link = document.createElement("a");
+    link.href = url;
+    link.download = `rangkuman-produksi-${period === "max" ? "semua" : rangeStart}-${rangeEnd}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
   return (
     <div className="owner-simple">
       <section className="stock-outlook">
         <header className="dashboard-summary-filter">
-          <div className="period-switch" aria-label="Pilih rentang waktu dashboard">
-            {[
-              ["today", "Hari ini"],
-              ["week", "Minggu ini"],
-              ["month", "Bulan ini"],
-              ["custom", "Custom"],
-              ["max", "Maksimal"],
-            ].map(([value, label]) => (
-              <button type="button" className={period === value ? "active" : ""} key={value} onClick={() => setPeriod(value as typeof period)}>{label}</button>
-            ))}
+          <div className="dashboard-summary-intro">
+            <strong>Rangkuman produksi</strong>
+            <small>Cutting sesuai periode; posisi jahit, QC/finishing, dan stok jadi per tanggal akhir.</small>
+          </div>
+          <div className="dashboard-summary-actions">
+            <div className="period-switch" aria-label="Pilih rentang waktu dashboard">
+              {[
+                ["today", "Hari ini"],
+                ["week", "Minggu ini"],
+                ["month", "Bulan ini"],
+                ["custom", "Custom"],
+                ["max", "Maksimal"],
+              ].map(([value, label]) => (
+                <button type="button" className={period === value ? "active" : ""} key={value} onClick={() => setPeriod(value as typeof period)}>{label}</button>
+              ))}
+            </div>
+            <button type="button" className="dashboard-summary-download" onClick={downloadProductionSummary} disabled={!rangeStart || !rangeEnd || rangeStart > rangeEnd}>↓ Unduh CSV</button>
           </div>
         </header>
         {period === "custom" && <div className="period-dates dashboard-summary-dates"><label>Dari<input type="date" value={customStart} max={customEnd} onChange={(e) => setCustomStart(e.target.value)} /></label><label>Sampai<input type="date" value={customEnd} min={customStart} onChange={(e) => setCustomEnd(e.target.value)} /></label></div>}

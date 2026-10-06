@@ -7842,10 +7842,42 @@ body {
   border-bottom: 1px solid #e8edf5;
 }
 .stock-outlook > header.dashboard-summary-filter {
-  justify-content: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
   padding: 12px;
   border-bottom: 0;
   background: #fff;
+}
+.dashboard-summary-intro {
+  display: grid;
+  gap: 3px;
+  min-width: 200px;
+}
+.dashboard-summary-intro strong {
+  color: #182636;
+  font-size: 12px;
+}
+.dashboard-summary-intro small {
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.dashboard-summary-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.stock-outlook > header .dashboard-summary-download {
+  border-color: #2d64e8;
+  background: #2d64e8;
+  color: #fff;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.stock-outlook > header .dashboard-summary-download:disabled {
+  opacity: .5;
+  cursor: not-allowed;
 }
 .dashboard-summary-filter .period-switch {
   width: auto;
@@ -8353,9 +8385,15 @@ body {
 	}
 	.stock-outlook-kpis article.potential-stock-summary-card small { max-width: none; }
   .stock-outlook > header.dashboard-summary-filter {
-    overflow-x: auto;
-    justify-content: flex-start;
+    align-items: flex-start;
     padding: 10px;
+  }
+  .dashboard-summary-actions {
+    width: 100%;
+  }
+  .dashboard-summary-actions .period-switch {
+    max-width: 100%;
+    overflow-x: auto;
   }
   .stock-outlook-kpis {
     display: grid;
