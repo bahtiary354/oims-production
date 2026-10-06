@@ -3,7 +3,7 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { applyDecorationReceipt, getDecorationReceiptState, validateDecorationReceiptInput } from "../lib/decoration-receipt";
-import { buildProductionSummary, productionSummaryCSV } from "../lib/production-summary";
+import { buildProductionSummary, dashboardDetailCSV, productionSummaryCSV } from "../lib/production-summary";
 import { AppSidebar } from "./components/app-sidebar";
 import { AppTopbar } from "./components/app-topbar";
 import { ModuleView, ModuleWorkspace } from "./components/module-workspace";
@@ -7853,6 +7853,27 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }
+  function downloadDashboardDetail() {
+    if (!selectedSummary || !summaryDetail || selectedSummaryModels.length === 0) return;
+    const scope = summaryDetail === "cutting"
+        ? `Hasil cutting ${rangeStart} s.d. ${rangeEnd}`
+        : `Saldo posisi pada ${today}`,
+      content = dashboardDetailCSV({
+        label: selectedSummary.label,
+        scope,
+        sizes: selectedSummarySizes,
+        models: selectedSummaryModels,
+        total: selectedSummaryTotal,
+      }),
+      url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" })),
+      link = document.createElement("a");
+    link.href = url;
+    link.download = `rincian-${summaryDetail.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}-${summaryDetail === "cutting" ? `${rangeStart}-${rangeEnd}` : today}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
   return (
     <div className="owner-simple">
       <section className="stock-outlook">
@@ -8023,7 +8044,10 @@ function Dashboard({ data, go }: { data: AppData; go: (x: string) => void }) {
                 <h2>Rincian {selectedSummary.label}</h2>
 	                <span>{selectedSummaryTotal} unit · {summaryDetail === "cutting" ? "mengikuti periode dashboard" : "saldo posisi saat ini"}</span>
               </div>
-              <button type="button" aria-label="Tutup rincian" onClick={() => setSummaryDetail(null)}>×</button>
+              <div className="summary-detail-actions">
+                <button type="button" className="summary-detail-download" onClick={downloadDashboardDetail} disabled={selectedSummaryModels.length === 0}>Unduh CSV</button>
+                <button type="button" aria-label="Tutup rincian" onClick={() => setSummaryDetail(null)}>×</button>
+              </div>
             </header>
             <div className="summary-detail-table-wrap">
               {selectedSummaryModels.length === 0 ? (

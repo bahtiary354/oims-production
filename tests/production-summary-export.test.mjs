@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildProductionSummary, productionSummaryCSV } from "../lib/production-summary.ts";
+import { buildProductionSummary, dashboardDetailCSV, productionSummaryCSV } from "../lib/production-summary.ts";
 
 const variant = (qty) => [{ color: "Hitam", size: "M", qty }];
 const record = (id, date, sourceId, qty, stage, extra = {}) => ({
@@ -61,4 +61,48 @@ test("CSV memuat periode, kolom posisi, total, dan melindungi sel yang dapat men
 
 test("tanggal terbalik ditolak", () => {
   assert.throws(() => buildProductionSummary(records, "2026-09-10", "2026-09-01"));
+});
+
+test("CSV rincian dashboard mengikuti tabel warna, ukuran, subtotal model, dan total", () => {
+  const csv = dashboardDetailCSV({
+    label: "Sedang Dijahit",
+    scope: "Saldo posisi pada 2026-10-06",
+    sizes: ["M", "L"],
+    models: [
+      {
+        modelName: "Supernova", modelCode: "SUP", total: 8,
+        colors: [
+          { color: "Hitam", quantities: { M: 2, L: 3 }, total: 5 },
+          { color: "Burgundy", quantities: { M: 0, L: 3 }, total: 3 },
+        ],
+      },
+      {
+        modelName: "Nordic", modelCode: "NORD", total: 4,
+        colors: [{ color: "Olive", quantities: { M: 4 }, total: 4 }],
+      },
+    ],
+    total: 12,
+  });
+  assert.ok(csv.startsWith("\uFEFF"));
+  assert.match(csv, /"Cakupan";"Saldo posisi pada 2026-10-06"/);
+  assert.match(csv, /"Model";"SKU";"Warna";"M";"L";"Jumlah"/);
+  assert.match(csv, /"Supernova";"SUP";"Hitam";"2";"3";"5"/);
+  assert.match(csv, /"Supernova";"SUP";"Burgundy";"0";"3";"3"/);
+  assert.match(csv, /"Total Supernova";"";"";"";"";"8"/);
+  assert.match(csv, /"Nordic";"NORD";"Olive";"4";"0";"4"/);
+  assert.match(csv, /"TOTAL";"";"";"";"";"12"$/);
+});
+
+test("CSV rincian dashboard melindungi nilai dinamis yang berawalan formula", () => {
+  const csv = dashboardDetailCSV({
+    label: "Cutting",
+    scope: "Hasil cutting 2026-09-01 s.d. 2026-09-30",
+    sizes: ["M"],
+    models: [{ modelName: "=1+1", modelCode: "SUP", total: 1,
+      colors: [{ color: "@HYPERLINK", quantities: { M: 1 }, total: 1 }],
+    }],
+    total: 1,
+  });
+  assert.match(csv, /"Cakupan";"Hasil cutting 2026-09-01 s\.d\. 2026-09-30"/);
+  assert.match(csv, /"'=1\+1";"SUP";"'@HYPERLINK";"1";"1"/);
 });

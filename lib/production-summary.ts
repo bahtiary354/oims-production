@@ -21,6 +21,52 @@ type SummaryLine = {
 
 const positionKeys: SummaryPosition[] = ["cutting", "warehouse", "sewing", "qc", "stock"];
 
+const csvCell = (value: string | number) => {
+  const plain = String(value ?? "");
+  const protectedValue = /^[\s\uFEFF]*[=+@-]/.test(plain) ? `'${plain}` : plain;
+  return `"${protectedValue.replaceAll('"', '""')}"`;
+};
+
+type DashboardDetailModel = {
+  modelCode: string;
+  modelName: string;
+  total: number;
+  colors: Array<{ color: string; quantities: Record<string, number>; total: number }>;
+};
+
+export function dashboardDetailCSV({
+  label,
+  scope,
+  sizes,
+  models,
+  total,
+}: {
+  label: string;
+  scope: string;
+  sizes: string[];
+  models: DashboardDetailModel[];
+  total: number;
+}) {
+  const rows: Array<Array<string | number>> = [
+    [`RINCIAN ${label.toUpperCase()} OIMS`],
+    ["Cakupan", scope],
+    [],
+    ["Model", "SKU", "Warna", ...sizes, "Jumlah"],
+    ...models.flatMap((model) => [
+      ...model.colors.map((color) => [
+        model.modelName,
+        model.modelCode,
+        color.color,
+        ...sizes.map((size) => color.quantities[size] ?? 0),
+        color.total,
+      ]),
+      [`Total ${model.modelName}`, "", "", ...sizes.map(() => ""), model.total],
+    ]),
+    ["TOTAL", "", "", ...sizes.map(() => ""), total],
+  ];
+  return `\uFEFF${rows.map((row) => row.map(csvCell).join(";")).join("\r\n")}`;
+}
+
 export function buildProductionSummary(
   records: Record<string, ProductionRecord[]>,
   start: string,
@@ -107,11 +153,6 @@ export function buildProductionSummary(
 }
 
 export function productionSummaryCSV(summary: ReturnType<typeof buildProductionSummary>) {
-  const safeCell = (value: string | number) => {
-    const plain = String(value ?? "");
-    const protectedValue = /^[\s\uFEFF]*[=+@-]/.test(plain) ? `'${plain}` : plain;
-    return `"${protectedValue.replaceAll('"', '""')}"`;
-  };
   const rows: Array<Array<string | number>> = [
     ["RANGKUMAN PRODUKSI OIMS"],
     ["Periode cutting", summary.start, "s.d.", summary.end],
@@ -125,5 +166,5 @@ export function productionSummaryCSV(summary: ReturnType<typeof buildProductionS
     ]),
     ["TOTAL", "", "", "", summary.totals.cutting, summary.totals.warehouse, summary.totals.sewing, summary.totals.qc, summary.totals.stock],
   ];
-  return `\uFEFF${rows.map((row) => row.map(safeCell).join(";")).join("\r\n")}`;
+  return `\uFEFF${rows.map((row) => row.map(csvCell).join(";")).join("\r\n")}`;
 }
